@@ -16,6 +16,9 @@ jobs:
   test:
     name: Test & Coverage
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -33,14 +36,69 @@ jobs:
         env:
           TEST_CALENDAR_URL: ${{ secrets.TEST_CALENDAR_URL }}
 
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        if: always()
+      - name: Install xmllint
+        if: github.event_name == 'pull_request'
+        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+
+      - name: Generate coverage summary
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "## 📊 Test Coverage Report" > coverage-summary.md
+          echo "" >> coverage-summary.md
+
+          # Extract coverage data from JaCoCo XML report
+          if [ -f "target/site/jacoco/jacoco.xml" ]; then
+            # Parse instruction coverage (from root report element)
+            INSTRUCTION_MISSED=$(xmllint --xpath 'string(/report/counter[@type="INSTRUCTION"]/@missed)' target/site/jacoco/jacoco.xml)
+            INSTRUCTION_COVERED=$(xmllint --xpath 'string(/report/counter[@type="INSTRUCTION"]/@covered)' target/site/jacoco/jacoco.xml)
+            INSTRUCTION_TOTAL=$((INSTRUCTION_MISSED + INSTRUCTION_COVERED))
+            INSTRUCTION_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($INSTRUCTION_COVERED/$INSTRUCTION_TOTAL)*100}")
+
+            # Parse branch coverage
+            BRANCH_MISSED=$(xmllint --xpath 'string(/report/counter[@type="BRANCH"]/@missed)' target/site/jacoco/jacoco.xml)
+            BRANCH_COVERED=$(xmllint --xpath 'string(/report/counter[@type="BRANCH"]/@covered)' target/site/jacoco/jacoco.xml)
+            BRANCH_TOTAL=$((BRANCH_MISSED + BRANCH_COVERED))
+            BRANCH_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($BRANCH_COVERED/$BRANCH_TOTAL)*100}")
+
+            # Parse line coverage
+            LINE_MISSED=$(xmllint --xpath 'string(/report/counter[@type="LINE"]/@missed)' target/site/jacoco/jacoco.xml)
+            LINE_COVERED=$(xmllint --xpath 'string(/report/counter[@type="LINE"]/@covered)' target/site/jacoco/jacoco.xml)
+            LINE_TOTAL=$((LINE_MISSED + LINE_COVERED))
+            LINE_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($LINE_COVERED/$LINE_TOTAL)*100}")
+
+            echo "| Metric | Coverage | Covered/Total |" >> coverage-summary.md
+            echo "|--------|----------|---------------|" >> coverage-summary.md
+            echo "| 📝 Instructions | ${INSTRUCTION_PERCENT}% | ${INSTRUCTION_COVERED}/${INSTRUCTION_TOTAL} |" >> coverage-summary.md
+            echo "| 🔀 Branches | ${BRANCH_PERCENT}% | ${BRANCH_COVERED}/${BRANCH_TOTAL} |" >> coverage-summary.md
+            echo "| 📄 Lines | ${LINE_PERCENT}% | ${LINE_COVERED}/${LINE_TOTAL} |" >> coverage-summary.md
+            echo "" >> coverage-summary.md
+
+            # Add status indicator
+            if (( $(echo "$LINE_PERCENT >= 80" | bc -l) )); then
+              echo "✅ **Coverage is excellent!** (≥80%)" >> coverage-summary.md
+            elif (( $(echo "$LINE_PERCENT >= 50" | bc -l) )); then
+              echo "✓ **Coverage meets minimum requirement** (≥50%)" >> coverage-summary.md
+            else
+              echo "⚠️ **Coverage is below minimum requirement** (<50%)" >> coverage-summary.md
+            fi
+          else
+            echo "⚠️ Coverage report not found" >> coverage-summary.md
+          fi
+
+      - name: Comment PR with coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
         with:
-          files: ./target/site/jacoco/jacoco.xml
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const coverageSummary = fs.readFileSync('coverage-summary.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: coverageSummary
+            });
 
       - name: Archive test results
         if: always()
@@ -107,3 +165,20 @@ jobs:
 
       - name: Image digest
         run: echo "Image pushed successfully with tags latest and ${{ github.sha }}"
+
+      - name: Trigger Portainer Redeploy
+        run: |
+          echo "🚀 Triggering Portainer redeploy..."
+          curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -H "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
+            -H "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
+            -w "\nHTTP Status: %{http_code}\n" \
+            -s -o /dev/null
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Portainer webhook triggered successfully"
+          else
+            echo "❌ Failed to trigger Portainer webhook"
+            exit 1
+          fi
