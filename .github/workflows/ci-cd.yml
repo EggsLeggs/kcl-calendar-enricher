@@ -48,21 +48,21 @@ jobs:
 
           # Extract coverage data from JaCoCo XML report
           if [ -f "target/site/jacoco/jacoco.xml" ]; then
-            # Parse instruction coverage
-            INSTRUCTION_MISSED=$(xmllint --xpath 'string(//counter[@type="INSTRUCTION"]/@missed)' target/site/jacoco/jacoco.xml)
-            INSTRUCTION_COVERED=$(xmllint --xpath 'string(//counter[@type="INSTRUCTION"]/@covered)' target/site/jacoco/jacoco.xml)
+            # Parse instruction coverage (from root report element)
+            INSTRUCTION_MISSED=$(xmllint --xpath 'string(/report/counter[@type="INSTRUCTION"]/@missed)' target/site/jacoco/jacoco.xml)
+            INSTRUCTION_COVERED=$(xmllint --xpath 'string(/report/counter[@type="INSTRUCTION"]/@covered)' target/site/jacoco/jacoco.xml)
             INSTRUCTION_TOTAL=$((INSTRUCTION_MISSED + INSTRUCTION_COVERED))
             INSTRUCTION_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($INSTRUCTION_COVERED/$INSTRUCTION_TOTAL)*100}")
 
             # Parse branch coverage
-            BRANCH_MISSED=$(xmllint --xpath 'string(//counter[@type="BRANCH"]/@missed)' target/site/jacoco/jacoco.xml)
-            BRANCH_COVERED=$(xmllint --xpath 'string(//counter[@type="BRANCH"]/@covered)' target/site/jacoco/jacoco.xml)
+            BRANCH_MISSED=$(xmllint --xpath 'string(/report/counter[@type="BRANCH"]/@missed)' target/site/jacoco/jacoco.xml)
+            BRANCH_COVERED=$(xmllint --xpath 'string(/report/counter[@type="BRANCH"]/@covered)' target/site/jacoco/jacoco.xml)
             BRANCH_TOTAL=$((BRANCH_MISSED + BRANCH_COVERED))
             BRANCH_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($BRANCH_COVERED/$BRANCH_TOTAL)*100}")
 
             # Parse line coverage
-            LINE_MISSED=$(xmllint --xpath 'string(//counter[@type="LINE"]/@missed)' target/site/jacoco/jacoco.xml)
-            LINE_COVERED=$(xmllint --xpath 'string(//counter[@type="LINE"]/@covered)' target/site/jacoco/jacoco.xml)
+            LINE_MISSED=$(xmllint --xpath 'string(/report/counter[@type="LINE"]/@missed)' target/site/jacoco/jacoco.xml)
+            LINE_COVERED=$(xmllint --xpath 'string(/report/counter[@type="LINE"]/@covered)' target/site/jacoco/jacoco.xml)
             LINE_TOTAL=$((LINE_MISSED + LINE_COVERED))
             LINE_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($LINE_COVERED/$LINE_TOTAL)*100}")
 
