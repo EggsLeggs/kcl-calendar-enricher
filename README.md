@@ -112,7 +112,6 @@ https://scientia-eu-v4-api-d4-02.azurewebsites.net/api/ical/{uuid}/{uuid}/timeta
 - ❌ `https://scientia-eu-v4-api-d4-02.azurewebsites.net/other/path/.../timetable.ics` (wrong path prefix)
 - ❌ `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../calendar.ics` (wrong filename)
 
->>>>>>> Stashed changes
 ## Building Codes Supported
 
 - King's Building (KINGS_BLDG, KINGS_BDLG, KIN) → 33-41 Surrey St, London, WC2R 2ND
