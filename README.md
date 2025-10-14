@@ -1,8 +1,8 @@
 # KCL Calendar Enricher
 
-A Java application that enriches King's College London (KCL) ICS calendar feeds with proper location metadata. Transforms abbreviated building codes like "KINGS BLDG" into full addresses like "King's Building - King's College London, Strand Campus, London WC2R 2LS".
+A Java application that enriches King's College London (KCL) ICS calendar feeds with proper location metadata for Apple Calendar and other calendar applications. Updates the location field with full addresses for geocoding, while preserving original room details in the event description.
 
-## 🚀 Live Service
+## ✨ Live Service
 
 The service is live at **https://kcl-calendar-enricher.thinkhuman.dev**
 
@@ -30,7 +30,7 @@ The service is live at **https://kcl-calendar-enricher.thinkhuman.dev**
 - ✅ Serves enriched calendar feeds via HTTP
 - ✅ 5-minute caching for performance
 - ✅ ICS 2.0 compliant
-- ✅ Built with Test-Driven Development (TDD) - 29 passing tests
+- ✅ Built with Test-Driven Development (TDD)
 
 ## Quick Start
 
@@ -73,24 +73,31 @@ Replace `YOUR_KCL_CALENDAR_URL` with your actual KCL calendar subscription URL.
 **Before (Original KCL Calendar):**
 ```
 LOCATION: KINGS BLDG KIN 625
+DESCRIPTION: Module Code: 6CCS3PRJ
+             Location: KINGS BLDG KIN 625
 ```
 
 **After (Enriched):**
 ```
-LOCATION: King's Building - King's College London, Strand Campus, London WC2R 2LS, Room 625 (Anatomy Lecture Theatre)
+LOCATION: 33-41 Surrey St, London, WC2R 2ND, England
+DESCRIPTION: Module Code: 6CCS3PRJ
+             Location: KINGS BLDG KIN 625
 ```
+
+The enricher updates only the LOCATION field with the full address for proper geocoding in calendar apps (particularly Apple Calendar). The original location details including room numbers remain in the event description.
 
 ## Building Codes Supported
 
-- King's Building (KINGS BLDG, KIN)
-- Strand Building (STRAND BLDG, STR)
-- Franklin-Wilkins Building (WATERLOO, FWB)
-- Bush House (BUSH HOUSE, BSH)
-- Somerset House (SOMERSET HOUSE, SOM)
-- Maughan Library (MAUGHAN, MAU)
-- Guy's Campus (GUYS, GUY)
-- St Thomas' Campus (ST_THOMAS, STH)
-- Denmark Hill Campus (DENMARK_HILL, DEN)
+- King's Building (KINGS_BLDG, KINGS_BDLG, KIN) → 33-41 Surrey St, London, WC2R 2ND
+- Strand Building (STRAND_BLDG, STR) → 33-41 Surrey St, London, WC2R 2ND
+- Franklin-Wilkins Building (WATERLOO, FWB) → Stamford St, London SE1 9NH
+- Bush House (BUSH_HOUSE, BSH) → 30 Bush House, Aldwych, London, WC2B 4BG
+- IET Turing (IET_TURING, IET, TURING) → 2 Savoy Pl, London, WC2R 0BL
+- Somerset House (SOMERSET_HOUSE, SOM) → Somerset House, Strand, London WC2R 1LA
+- Maughan Library (MAUGHAN, MAU) → Chancery Lane, London WC2A 1LR
+- Guy's Campus (GUYS, GUY) → Great Maze Pond, London SE1 1UL
+- St Thomas' Campus (ST_THOMAS, STH) → Westminster Bridge Rd, London SE1 7EH
+- Denmark Hill Campus (DENMARK_HILL, DEN) → Denmark Hill, London SE5 9RS
 
 ## Docker Deployment
 
@@ -175,8 +182,6 @@ mvn clean verify
 
 Coverage reports are generated in `target/site/jacoco/index.html`
 
-Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
-
 ### CI/CD Test Configuration
 
 For GitHub Actions CI/CD, add the `TEST_CALENDAR_URL` as a repository secret:
@@ -201,7 +206,7 @@ src/
 │       ├── CalendarEnricher.java         # Main enrichment service
 │       ├── CalendarFetcher.java          # Fetches calendars
 │       └── LocationMapper.java           # Maps locations
-└── test/java/com/kcl/calendar/          # 29 JUnit tests
+└── test/java/com/kcl/calendar/          # JUnit tests
 ```
 
 ## API Endpoints
