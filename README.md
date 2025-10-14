@@ -106,6 +106,7 @@ This project uses GitHub Actions for continuous integration and deployment:
 ### On Pull Request
 - ✅ Run tests with JUnit 5
 - ✅ Generate code coverage reports with JaCoCo (minimum 50% coverage)
+- ✅ Post coverage summary as PR comment with detailed metrics
 - ✅ Upload test results and coverage artifacts
 
 ### On Push to Main
@@ -113,8 +114,20 @@ This project uses GitHub Actions for continuous integration and deployment:
 - ✅ Build Docker image
 - ✅ Push to GitHub Container Registry
 - ✅ Tag with `latest` and commit SHA
+- ✅ Trigger Portainer webhook for automatic redeployment
 
 **Docker Image**: `ghcr.io/eggsleggs/kcl-calendar-enricher:latest`
+
+### Required GitHub Secrets
+
+The following secrets must be configured in your repository (Settings → Secrets and variables → Actions):
+
+1. **`TEST_CALENDAR_URL`** - Your KCL calendar URL for running integration tests
+2. **`PORTAINER_WEBHOOK_URL`** - Portainer webhook URL for triggering automatic redeployment
+3. **`CF_ACCESS_CLIENT_ID`** - Cloudflare Zero Trust client ID for Portainer webhook authentication
+4. **`CF_ACCESS_CLIENT_SECRET`** - Cloudflare Zero Trust client secret for Portainer webhook authentication
+
+**Security Note:** Never commit these secrets to the repository. They are automatically injected by GitHub Actions during CI/CD runs.
 
 ## Testing
 
@@ -199,4 +212,4 @@ Personal project for enriching KCL calendar feeds. Not affiliated with King's Co
 
 ## Documentation
 
-For detailed documentation, see [.claude/project-spec.md](.claude/project-spec.md)
+For detailed documentation, see [.claude/project-spec.md](CLAUDE.md)
