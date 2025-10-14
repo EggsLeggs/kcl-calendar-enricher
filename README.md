@@ -208,7 +208,6 @@ src/
 
 - `GET /health` - Health check
 - `GET /enrich?url=<calendar-url>` - Enrich and return calendar
-- `GET /subscribe/{urlParam}` - Subscribe endpoint
 
 ## Configuration
 
