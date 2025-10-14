@@ -8,7 +8,7 @@ The service is live at **https://kcl-calendar-enricher.thinkhuman.dev**
 
 ### How to Use
 
-1. **Get your KCL calendar URL** from Scientia (it looks like `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../timetable.ics`)
+1. **Get your KCL calendar URL** from https://mytimetable.kcl.ac.uk/ (it looks like `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../timetable.ics` and is provided when you click the subscribe button)
 
 2. **Subscribe in your calendar app** using the enriched URL:
    ```
