@@ -31,6 +31,7 @@ The service is live at **https://kcl-calendar-enricher.thinkhuman.dev**
 - ✅ 5-minute caching for performance
 - ✅ ICS 2.0 compliant
 - ✅ Built with Test-Driven Development (TDD)
+- ✅ Strict URL validation for security
 
 ## Quick Start
 
@@ -85,6 +86,30 @@ DESCRIPTION: Module Code: 6CCS3PRJ
 ```
 
 The enricher updates only the LOCATION field with the full address for proper geocoding in calendar apps (particularly Apple Calendar). The original location details including room numbers remain in the event description.
+
+## Security: URL Validation
+
+For security, the service strictly validates all calendar URLs with the following requirements:
+
+- **HTTPS Only**: Only HTTPS URLs are accepted
+- **Exact Domain**: Must be from `scientia-eu-v4-api-d4-02.azurewebsites.net` (KCL's official Scientia calendar domain)
+- **Path Requirements**:
+  - Must start with `/api/ical/`
+  - Must end with `/timetable.ics`
+
+Any URL that doesn't meet these criteria will be rejected with a `400 Bad Request` response.
+
+**Valid URL format:**
+```
+https://scientia-eu-v4-api-d4-02.azurewebsites.net/api/ical/{uuid}/{uuid}/timetable.ics
+```
+
+**Examples:**
+- ✅ `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/ca05f91a-6c36-45db-9b40-6d011398ed58/017be310-533f-dd3e-b53b-469dd718a317/timetable.ics`
+- ❌ `http://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../timetable.ics` (not HTTPS)
+- ❌ `https://other-domain.azurewebsites.net//api/ical/.../timetable.ics` (wrong domain)
+- ❌ `https://scientia-eu-v4-api-d4-02.azurewebsites.net/other/path/.../timetable.ics` (wrong path prefix)
+- ❌ `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../calendar.ics` (wrong filename)
 
 ## Building Codes Supported
 
