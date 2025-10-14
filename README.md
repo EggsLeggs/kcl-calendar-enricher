@@ -86,7 +86,6 @@ DESCRIPTION: Module Code: 6CCS3PRJ
 
 The enricher updates only the LOCATION field with the full address for proper geocoding in calendar apps (particularly Apple Calendar). The original location details including room numbers remain in the event description.
 
-<<<<<<< Updated upstream
 =======
 ## Security: URL Validation
 
