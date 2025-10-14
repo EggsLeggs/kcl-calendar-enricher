@@ -2,6 +2,26 @@
 
 A Java application that enriches King's College London (KCL) ICS calendar feeds with proper location metadata. Transforms abbreviated building codes like "KINGS BLDG" into full addresses like "King's Building - King's College London, Strand Campus, London WC2R 2LS".
 
+## 🚀 Live Service
+
+The service is live at **https://kcl-calendar-enricher.thinkhuman.dev**
+
+### How to Use
+
+1. **Get your KCL calendar URL** from Scientia (it looks like `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../timetable.ics`)
+
+2. **Subscribe in your calendar app** using the enriched URL:
+   ```
+   https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=YOUR_KCL_CALENDAR_URL
+   ```
+
+3. **Or test it directly** with curl:
+   ```bash
+   curl "https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=YOUR_KCL_CALENDAR_URL"
+   ```
+
+**Note:** Replace `YOUR_KCL_CALENDAR_URL` with your actual KCL calendar subscription URL (URL-encoded if using in a browser).
+
 ## Features
 
 - ✅ Fetches ICS calendar feeds from KCL's Scientia system
@@ -209,7 +229,3 @@ This project was built using Test-Driven Development (TDD) with JUnit 5. Each co
 ## License
 
 Personal project for enriching KCL calendar feeds. Not affiliated with King's College London.
-
-## Documentation
-
-For detailed documentation, see [.claude/project-spec.md](CLAUDE.md)
