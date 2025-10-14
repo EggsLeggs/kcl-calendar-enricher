@@ -45,14 +45,9 @@ public class CalendarEnricherApplication {
         // Usage: /enrich?url=<your-kcl-calendar-url>
         app.get("/enrich", this::handleEnrichRequest);
 
-        // Subscribe endpoint with URL parameter
-        // Usage: /subscribe/<base64-encoded-url>
-        app.get("/subscribe/{urlParam}", this::handleSubscribeRequest);
-
         System.out.println("KCL Calendar Enricher started on port " + port);
         System.out.println("Usage:");
         System.out.println("  GET /enrich?url=<your-kcl-calendar-url>");
-        System.out.println("  GET /subscribe/<url-parameter>");
         System.out.println("  GET /health");
     }
 
@@ -96,22 +91,6 @@ public class CalendarEnricherApplication {
         } catch (Exception e) {
             ctx.status(500).result("Internal server error: " + e.getMessage());
         }
-    }
-
-    /**
-     * Handles the subscribe request with URL parameter.
-     */
-    private void handleSubscribeRequest(Context ctx) {
-        String urlParam = ctx.pathParam("urlParam");
-
-        if (urlParam == null || urlParam.isEmpty()) {
-            ctx.status(400).result("Missing URL parameter");
-            return;
-        }
-
-        // For now, just redirect to the enrich endpoint
-        // In a production system, you might want to decode a base64 encoded URL
-        ctx.redirect("/enrich?url=" + urlParam);
     }
 
     /**
