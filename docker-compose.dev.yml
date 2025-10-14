@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  kcl-calendar-enricher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kcl-calendar-enricher
+    ports:
+      - "8080:8080"
+    environment:
+      # Optional: Java memory settings
+      - JAVA_OPTS=-Xmx512m -Xms256m
+      - SERVER_PORT=8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
