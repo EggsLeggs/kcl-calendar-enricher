@@ -132,6 +132,14 @@ When you push to the `main` branch, GitHub Actions will:
 1. Run tests with coverage
 2. Build a new Docker image
 3. Push to GitHub Container Registry with tags `latest` and the commit SHA
+4. Trigger Portainer webhook to automatically pull and redeploy the new image
+
+**Note:** For automatic redeployment to work, you must configure the following GitHub secrets:
+- `PORTAINER_WEBHOOK_URL` - Your Portainer stack webhook URL (found in Portainer stack settings)
+- `CF_ACCESS_CLIENT_ID` - Cloudflare Zero Trust client ID
+- `CF_ACCESS_CLIENT_SECRET` - Cloudflare Zero Trust client secret
+
+The webhook URL and credentials are required to authenticate and trigger redeployment through Cloudflare Zero Trust protection.
 
 ### Manual Update in Portainer
 1. Navigate to **Stacks** → Select your stack

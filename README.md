@@ -2,6 +2,26 @@
 
 A Java application that enriches King's College London (KCL) ICS calendar feeds with proper location metadata. Transforms abbreviated building codes like "KINGS BLDG" into full addresses like "King's Building - King's College London, Strand Campus, London WC2R 2LS".
 
+## 🚀 Live Service
+
+The service is live at **https://kcl-calendar-enricher.thinkhuman.dev**
+
+### How to Use
+
+1. **Get your KCL calendar URL** from https://mytimetable.kcl.ac.uk/ (it looks like `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../timetable.ics` and is provided when you click the subscribe button)
+
+2. **Subscribe in your calendar app** using the enriched URL:
+   ```
+   https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=YOUR_KCL_CALENDAR_URL
+   ```
+
+3. **Or test it directly** with curl:
+   ```bash
+   curl "https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=YOUR_KCL_CALENDAR_URL"
+   ```
+
+**Note:** Replace `YOUR_KCL_CALENDAR_URL` with your actual KCL calendar subscription URL (URL-encoded if using in a browser).
+
 ## Features
 
 - ✅ Fetches ICS calendar feeds from KCL's Scientia system
@@ -106,6 +126,7 @@ This project uses GitHub Actions for continuous integration and deployment:
 ### On Pull Request
 - ✅ Run tests with JUnit 5
 - ✅ Generate code coverage reports with JaCoCo (minimum 50% coverage)
+- ✅ Post coverage summary as PR comment with detailed metrics
 - ✅ Upload test results and coverage artifacts
 
 ### On Push to Main
@@ -113,8 +134,20 @@ This project uses GitHub Actions for continuous integration and deployment:
 - ✅ Build Docker image
 - ✅ Push to GitHub Container Registry
 - ✅ Tag with `latest` and commit SHA
+- ✅ Trigger Portainer webhook for automatic redeployment
 
 **Docker Image**: `ghcr.io/eggsleggs/kcl-calendar-enricher:latest`
+
+### Required GitHub Secrets
+
+The following secrets must be configured in your repository (Settings → Secrets and variables → Actions):
+
+1. **`TEST_CALENDAR_URL`** - Your KCL calendar URL for running integration tests
+2. **`PORTAINER_WEBHOOK_URL`** - Portainer webhook URL for triggering automatic redeployment
+3. **`CF_ACCESS_CLIENT_ID`** - Cloudflare Zero Trust client ID for Portainer webhook authentication
+4. **`CF_ACCESS_CLIENT_SECRET`** - Cloudflare Zero Trust client secret for Portainer webhook authentication
+
+**Security Note:** Never commit these secrets to the repository. They are automatically injected by GitHub Actions during CI/CD runs.
 
 ## Testing
 
@@ -196,7 +229,3 @@ This project was built using Test-Driven Development (TDD) with JUnit 5. Each co
 ## License
 
 Personal project for enriching KCL calendar feeds. Not affiliated with King's College London.
-
-## Documentation
-
-For detailed documentation, see [.claude/project-spec.md](.claude/project-spec.md)
