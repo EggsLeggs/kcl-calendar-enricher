@@ -46,10 +46,11 @@ class CalendarFetcherTest {
         // Given
         String url = "https://invalid-url-that-does-not-exist.com/calendar.ics";
 
-        // When & Then - can throw either IOException or ParserException
-        assertThrows(Exception.class, () -> {
+        // When & Then - should reject due to invalid domain
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
             fetcher.fetchCalendar(url);
         });
+        assertTrue(exception.getMessage().contains("scientia-eu-v4-api-d4-02.azurewebsites.net"));
     }
 
     @Test
@@ -79,5 +80,88 @@ class CalendarFetcherTest {
         // Then
         assertNotNull(calendar.getProperty("VERSION"));
         assertEquals("2.0", calendar.getProperty("VERSION").getValue());
+    }
+
+    @Test
+    void testRejectsNonHttpsUrl() {
+        // Given
+        String url = "http://scientia-eu-v4-api-d4-02.azurewebsites.net/api/ical/test/timetable.ics";
+
+        // When & Then
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            fetcher.fetchCalendar(url);
+        });
+        assertTrue(exception.getMessage().contains("HTTPS"));
+    }
+
+    @Test
+    void testRejectsNonAzureWebsitesDomain() {
+        // Given
+        String url = "https://malicious-site.com/api/ical/test/timetable.ics";
+
+        // When & Then
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            fetcher.fetchCalendar(url);
+        });
+        assertTrue(exception.getMessage().contains("scientia-eu-v4-api-d4-02.azurewebsites.net"));
+    }
+
+    @Test
+    void testRejectsWrongAzureDomain() {
+        // Given - different azure domain that's not the exact KCL Scientia domain
+        String url = "https://other-scientia.azurewebsites.net/api/ical/test/timetable.ics";
+
+        // When & Then
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            fetcher.fetchCalendar(url);
+        });
+        assertTrue(exception.getMessage().contains("scientia-eu-v4-api-d4-02.azurewebsites.net"));
+    }
+
+    @Test
+    void testRejectsNonIcsFile() {
+        // Given
+        String url = "https://scientia-eu-v4-api-d4-02.azurewebsites.net/api/ical/test/timetable.txt";
+
+        // When & Then
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            fetcher.fetchCalendar(url);
+        });
+        assertTrue(exception.getMessage().contains("/timetable.ics"));
+    }
+
+    @Test
+    void testRejectsWrongIcsFilename() {
+        // Given - ends with .ics but not /timetable.ics
+        String url = "https://scientia-eu-v4-api-d4-02.azurewebsites.net/api/ical/test/calendar.ics";
+
+        // When & Then
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            fetcher.fetchCalendar(url);
+        });
+        assertTrue(exception.getMessage().contains("/timetable.ics"));
+    }
+
+    @Test
+    void testRejectsWrongPathPrefix() {
+        // Given - correct domain and filename but wrong path
+        String url = "https://scientia-eu-v4-api-d4-02.azurewebsites.net/other/path/test/timetable.ics";
+
+        // When & Then
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            fetcher.fetchCalendar(url);
+        });
+        assertTrue(exception.getMessage().contains("/api/ical/"));
+    }
+
+    @Test
+    void testAcceptsValidKclCalendarUrl() throws IOException, ParserException {
+        // Given - URL from environment variable should be a valid KCL calendar URL
+        String url = testCalendarUrl;
+
+        // When & Then - should not throw validation exception
+        assertDoesNotThrow(() -> {
+            fetcher.fetchCalendar(url);
+        });
     }
 }
