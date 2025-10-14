@@ -1,0 +1,180 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: eggsleggs/kcl-calendar-enricher
+
+jobs:
+  test:
+    name: Test & Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Run tests with coverage
+        run: mvn clean verify
+        env:
+          TEST_CALENDAR_URL: ${{ secrets.TEST_CALENDAR_URL }}
+
+      - name: Generate coverage summary
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "## 📊 Test Coverage Report" > coverage-summary.md
+          echo "" >> coverage-summary.md
+
+          # Extract coverage data from JaCoCo XML report
+          if [ -f "target/site/jacoco/jacoco.xml" ]; then
+            # Parse instruction coverage
+            INSTRUCTION_MISSED=$(xmllint --xpath 'string(//counter[@type="INSTRUCTION"]/@missed)' target/site/jacoco/jacoco.xml)
+            INSTRUCTION_COVERED=$(xmllint --xpath 'string(//counter[@type="INSTRUCTION"]/@covered)' target/site/jacoco/jacoco.xml)
+            INSTRUCTION_TOTAL=$((INSTRUCTION_MISSED + INSTRUCTION_COVERED))
+            INSTRUCTION_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($INSTRUCTION_COVERED/$INSTRUCTION_TOTAL)*100}")
+
+            # Parse branch coverage
+            BRANCH_MISSED=$(xmllint --xpath 'string(//counter[@type="BRANCH"]/@missed)' target/site/jacoco/jacoco.xml)
+            BRANCH_COVERED=$(xmllint --xpath 'string(//counter[@type="BRANCH"]/@covered)' target/site/jacoco/jacoco.xml)
+            BRANCH_TOTAL=$((BRANCH_MISSED + BRANCH_COVERED))
+            BRANCH_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($BRANCH_COVERED/$BRANCH_TOTAL)*100}")
+
+            # Parse line coverage
+            LINE_MISSED=$(xmllint --xpath 'string(//counter[@type="LINE"]/@missed)' target/site/jacoco/jacoco.xml)
+            LINE_COVERED=$(xmllint --xpath 'string(//counter[@type="LINE"]/@covered)' target/site/jacoco/jacoco.xml)
+            LINE_TOTAL=$((LINE_MISSED + LINE_COVERED))
+            LINE_PERCENT=$(awk "BEGIN {printf \"%.2f\", ($LINE_COVERED/$LINE_TOTAL)*100}")
+
+            echo "| Metric | Coverage | Covered/Total |" >> coverage-summary.md
+            echo "|--------|----------|---------------|" >> coverage-summary.md
+            echo "| 📝 Instructions | ${INSTRUCTION_PERCENT}% | ${INSTRUCTION_COVERED}/${INSTRUCTION_TOTAL} |" >> coverage-summary.md
+            echo "| 🔀 Branches | ${BRANCH_PERCENT}% | ${BRANCH_COVERED}/${BRANCH_TOTAL} |" >> coverage-summary.md
+            echo "| 📄 Lines | ${LINE_PERCENT}% | ${LINE_COVERED}/${LINE_TOTAL} |" >> coverage-summary.md
+            echo "" >> coverage-summary.md
+
+            # Add status indicator
+            if (( $(echo "$LINE_PERCENT >= 80" | bc -l) )); then
+              echo "✅ **Coverage is excellent!** (≥80%)" >> coverage-summary.md
+            elif (( $(echo "$LINE_PERCENT >= 50" | bc -l) )); then
+              echo "✓ **Coverage meets minimum requirement** (≥50%)" >> coverage-summary.md
+            else
+              echo "⚠️ **Coverage is below minimum requirement** (<50%)" >> coverage-summary.md
+            fi
+          else
+            echo "⚠️ Coverage report not found" >> coverage-summary.md
+          fi
+
+      - name: Comment PR with coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverageSummary = fs.readFileSync('coverage-summary.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: coverageSummary
+            });
+
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: target/surefire-reports/
+
+      - name: Archive coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/site/jacoco/
+
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build JAR
+        run: mvn clean package -DskipTests
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Image digest
+        run: echo "Image pushed successfully with tags latest and ${{ github.sha }}"
+
+      - name: Trigger Portainer Redeploy
+        run: |
+          echo "🚀 Triggering Portainer redeploy..."
+          curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -H "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
+            -H "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
+            -w "\nHTTP Status: %{http_code}\n" \
+            -s -o /dev/null
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Portainer webhook triggered successfully"
+          else
+            echo "❌ Failed to trigger Portainer webhook"
+            exit 1
+          fi

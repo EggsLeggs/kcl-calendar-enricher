@@ -1,0 +1,8 @@
+# Ignore everything except what we need
+*
+
+# Include only the JAR file
+!target/kcl-calendar-enricher-1.0-SNAPSHOT.jar
+
+# Documentation
+!README.md

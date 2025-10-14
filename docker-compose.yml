@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  app:
+    image: ghcr.io/eggsleggs/kcl-calendar-enricher:latest
+    container_name: kcl-calendar-enricher-app
+    environment:
+      - JAVA_OPTS=-Xmx512m -Xms256m
+      - SERVER_PORT=8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - tunnel
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: kcl-calendar-cloudflared
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    restart: unless-stopped
+    environment:
+      - TUNNEL_METRICS=0.0.0.0:9090
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - tunnel
+
+networks:
+  tunnel:
+    driver: bridge
