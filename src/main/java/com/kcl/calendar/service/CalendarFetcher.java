@@ -20,6 +20,12 @@ public class CalendarFetcher {
     private final HttpClient httpClient;
     private final CalendarBuilder calendarBuilder;
 
+    /**
+     * Initialises a CalendarFetcher with a configured HTTP client and a calendar parser.
+     *
+     * <p>The HTTP client is configured with a 30-second connection timeout and normal
+     * redirect behaviour. A new CalendarBuilder is created for parsing ICS data.
+     */
     public CalendarFetcher() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -29,15 +35,13 @@ public class CalendarFetcher {
     }
 
     /**
-     * Validates that the URL is from an allowed KCL calendar domain.
-     * Only accepts URLs from KCL's Scientia calendar service with strict validation:
-     * - Must be HTTPS
-     * - Must be from scientia-eu-v4-api-d4-02.azurewebsites.net domain
-     * - Must start with path /api/ical/
-     * - Must end with /timetable.ics
+     * Ensure the provided URL is a KCL Scientia calendar URL that meets strict domain and path constraints.
+     *
+     * The URL must use the HTTPS scheme, have host scientia-eu-v4-api-d4-02.azurewebsites.net,
+     * have a non-null path that begins with "/api/ical/" or "//api/ical/", and end with "/timetable.ics".
      *
      * @param url the URL to validate
-     * @throws IllegalArgumentException if the URL is not from an allowed domain
+     * @throws IllegalArgumentException if the URL is null, malformed, or does not meet the required scheme, host or path constraints
      */
     private void validateUrl(String url) {
         try {
@@ -75,13 +79,13 @@ public class CalendarFetcher {
     }
 
     /**
-     * Fetches and parses a calendar from the given URL.
+     * Fetches and parses an ICS calendar from the given URL after validating it belongs to the allowed KCL Scientia domain.
      *
-     * @param url the URL of the ICS calendar
-     * @return the parsed Calendar object
-     * @throws IOException if there's an error fetching the calendar
-     * @throws ParserException if there's an error parsing the calendar
-     * @throws IllegalArgumentException if the URL is null, empty, or not from an allowed domain
+     * @param url the HTTPS URL of the ICS calendar hosted on scientia-eu-v4-api-d4-02.azurewebsites.net (path must begin with `/api/ical/` and end with `/timetable.ics`)
+     * @return the parsed Calendar
+     * @throws IOException if there is a network error, a non-200 HTTP response, or the request is interrupted
+     * @throws ParserException if there is an error parsing the calendar data
+     * @throws IllegalArgumentException if the URL is null, empty, uses an unsupported scheme/host/path, or otherwise fails validation
      */
     public Calendar fetchCalendar(String url) throws IOException, ParserException {
         if (url == null || url.isEmpty()) {
