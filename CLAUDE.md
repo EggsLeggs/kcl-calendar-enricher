@@ -16,11 +16,16 @@ line before and after.
 
 | File | Responsibility |
 | --- | --- |
-| `src/index.ts` | Hono app. Two routes, the status mapping, and the cache headers. |
+| `src/index.ts` | Hono app. Three routes, the status mapping, and the cache headers. |
+| `src/page.ts` | The link builder served at `/`. One static string, no dependencies. |
 | `src/upstream.ts` | The Scientia allowlist, and fetching with hand-followed redirects. |
 | `src/ics.ts` | Unfold, unescape, swap `LOCATION`, re-escape, refold. |
 | `src/parser.ts` | The five regexes that read a KCL `DESCRIPTION`. |
 | `src/locations.ts` | Building code to street address. |
+
+The page at `/` repeats the host check from `src/upstream.ts` in its client-side JavaScript, so a
+wrong URL is caught before someone subscribes to a 400. **Change the two together**; a test asserts
+the regex literal survives into the served HTML.
 
 ## Conventions
 
@@ -46,11 +51,26 @@ dash would join a range or an aside, write `to`, a comma, or a full stop.
   what the original Java did, and it is better than leaving a bare room code.
 - A `VALARM` carries its own `DESCRIPTION`. `enrichEvent` tracks nesting depth so it reads the
   event's, not the reminder's.
+- The allowlist is a pattern over the whole Scientia shard family, not one host. KCL issues
+  different students links on different shards, and pinning `d4-02` returned 400 for everyone else.
+
+## The subscribe URL is the credential
+
+Scientia applies no authentication: whoever holds the URL can read the timetable. Two consequences.
+
+`Cache-Control: public` is deliberate and necessary - Workers Cache will not store the response
+otherwise - so an enriched timetable does sit in a shared cache. That is acceptable only because the
+cache key includes the query string, which means the entry is reachable only by someone who already
+knows the full URL. Do not move the upstream URL out of the query string, and do not add a route
+that would serve one person's feed under a key another person can guess.
+
+Never commit a real subscribe URL, in a test, a doc, or an example. One was committed to this public
+repo in October 2025 and stayed there for eleven months. Test fixtures use obviously fake UUIDs.
 
 ## Testing
 
 ```bash
-pnpm test       # 74 tests in the Workers runtime, no network
+pnpm test       # 78 tests in the Workers runtime, no network
 pnpm typecheck
 ```
 

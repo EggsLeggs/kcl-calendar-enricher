@@ -5,11 +5,32 @@ import { ok, serve, status, stubFetch } from './fetch-stub.ts'
 import fixture from './fixtures/timetable.ics?raw'
 
 const ORIGIN = 'https://scientia-eu-v4-api-d4-02.azurewebsites.net'
-const PATH = '/api/ical/REDACTED-TIMETABLE-ID/REDACTED-TIMETABLE-ID/timetable.ics'
+const PATH = '/api/ical/00000000-0000-4000-8000-000000000000/11111111-1111-4111-8111-111111111111/timetable.ics'
 const VALID = `${ORIGIN}${PATH}`
 
 const enrich = (url: string): Promise<Response> =>
   SELF.fetch(`https://enricher.test/enrich?url=${encodeURIComponent(url)}`)
+
+describe('GET /', () => {
+  it('serves the link builder', async () => {
+    const response = await SELF.fetch('https://enricher.test/')
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/html')
+    expect(response.headers.get('cache-control')).toBe('public, max-age=3600')
+
+    const body = await response.text()
+    expect(body).toContain('<form id="form"')
+    expect(body).toContain('/enrich?url=')
+  })
+
+  it('keeps its client-side host check in step with the server', async () => {
+    // String.raw must survive into the served HTML, or the regex silently matches the wrong thing.
+    const body = await (await SELF.fetch('https://enricher.test/')).text()
+
+    expect(body).toContain(String.raw`/^scientia-eu-v4-api-d\d{1,2}-\d{1,2}\.azurewebsites\.net$/`)
+  })
+})
 
 describe('GET /health', () => {
   it('returns OK and asks not to be cached', async () => {

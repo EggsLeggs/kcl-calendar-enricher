@@ -1,9 +1,13 @@
 import { Hono } from 'hono'
 
 import { ParseError, enrichCalendar } from './ics.ts'
+import { PAGE } from './page.ts'
 import { UpstreamError, ValidationError, fetchIcs } from './upstream.ts'
 
 const app = new Hono<{ Bindings: Env }>()
+
+// Turns a Scientia link into a subscribe link, so nobody has to hand-assemble a query string.
+app.get('/', (c) => c.html(PAGE, 200, { 'cache-control': 'public, max-age=3600' }))
 
 app.get('/health', (c) => c.text('OK', 200, { 'cache-control': 'no-store' }))
 

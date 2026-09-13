@@ -7,7 +7,14 @@
  * step outside the allowlist and turn this into an open proxy.
  */
 
-const ALLOWED_HOST = 'scientia-eu-v4-api-d4-02.azurewebsites.net'
+/**
+ * KCL issues timetable links across several Scientia shards - d4-02, d4-01, d3-02 and so on - so
+ * the allowlist covers the family rather than the single host the original author happened to be
+ * issued. It is still tightly scoped: nothing outside Scientia matches.
+ */
+const ALLOWED_HOST = /^scientia-eu-v4-api-d\d{1,2}-\d{1,2}\.azurewebsites\.net$/
+const ALLOWED_HOST_DESCRIPTION = 'scientia-eu-v4-api-d<n>-<nn>.azurewebsites.net'
+
 const TIMEOUT_MS = 30_000
 const MAX_REDIRECTS = 3
 const USER_AGENT = 'kcl-calendar-enricher (+https://kcl-calendar-enricher.thinkhuman.dev)'
@@ -40,8 +47,10 @@ export function validateUrl(raw: string): URL {
     throw new ValidationError('Only HTTPS URLs are allowed')
   }
 
-  if (url.hostname.toLowerCase() !== ALLOWED_HOST) {
-    throw new ValidationError(`Only KCL Scientia calendar URLs (${ALLOWED_HOST}) are allowed`)
+  if (!ALLOWED_HOST.test(url.hostname.toLowerCase())) {
+    throw new ValidationError(
+      `Only KCL Scientia calendar URLs (${ALLOWED_HOST_DESCRIPTION}) are allowed`,
+    )
   }
 
   if (!url.pathname.startsWith('/api/ical/') && !url.pathname.startsWith('//api/ical/')) {

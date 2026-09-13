@@ -5,7 +5,7 @@ import { noLocationRedirect, ok, redirect, serve, status, stubFetch } from './fe
 import fixture from './fixtures/timetable.ics?raw'
 
 const ORIGIN = 'https://scientia-eu-v4-api-d4-02.azurewebsites.net'
-const PATH = '/api/ical/REDACTED-TIMETABLE-ID/REDACTED-TIMETABLE-ID/timetable.ics'
+const PATH = '/api/ical/00000000-0000-4000-8000-000000000000/11111111-1111-4111-8111-111111111111/timetable.ics'
 const VALID = `${ORIGIN}${PATH}`
 
 describe('validateUrl', () => {
@@ -30,16 +30,38 @@ describe('validateUrl', () => {
     )
   })
 
+  it('accepts any Scientia shard, not just the one this repo was written against', () => {
+    // Other students are issued links on other shards. Rejecting those made the tool look broken.
+    for (const host of [
+      'scientia-eu-v4-api-d4-01.azurewebsites.net',
+      'scientia-eu-v4-api-d3-02.azurewebsites.net',
+      'scientia-eu-v4-api-d10-11.azurewebsites.net',
+    ]) {
+      expect(() => validateUrl(`https://${host}${PATH}`)).not.toThrow()
+    }
+  })
+
   it('rejects another domain', () => {
     expect(() => validateUrl('https://malicious-site.com/api/ical/test/timetable.ics')).toThrow(
-      /scientia-eu-v4-api-d4-02\.azurewebsites\.net/,
+      /Only KCL Scientia calendar URLs/,
     )
   })
 
   it('rejects a different azurewebsites.net host', () => {
     expect(() =>
       validateUrl('https://other-scientia.azurewebsites.net/api/ical/test/timetable.ics'),
-    ).toThrow(/scientia-eu-v4-api-d4-02\.azurewebsites\.net/)
+    ).toThrow(/Only KCL Scientia calendar URLs/)
+  })
+
+  it('rejects hosts that only look like a Scientia shard', () => {
+    for (const host of [
+      'scientia-eu-v5-api-d4-02.azurewebsites.net',
+      'scientia-eu-v4-api-d4-02.azurewebsites.net.evil.example',
+      'evil-scientia-eu-v4-api-d4-02.azurewebsites.net',
+      'scientia-eu-v4-api-dx-02.azurewebsites.net',
+    ]) {
+      expect(() => validateUrl(`https://${host}${PATH}`)).toThrow(/Only KCL Scientia calendar URLs/)
+    }
   })
 
   it('rejects a non-ics file', () => {

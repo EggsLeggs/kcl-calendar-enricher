@@ -27,21 +27,28 @@ The room detail stays in the description, so nothing is lost.
 
 ## Using it
 
-Subscribe your calendar app to:
+Go to **https://kcl-calendar-enricher.thinkhuman.dev**, paste your KCL timetable link, and it gives
+you a subscribe link to add to your calendar app.
+
+Your timetable URL comes from KCL's timetable system and looks like
+`https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/<uuid>/<uuid>/timetable.ics`. Any
+Scientia shard works, not just `d4-02`. Nothing else is accepted: only HTTPS Scientia timetable URLs
+get fetched, so this cannot be used as a general proxy.
+
+That link is personal to you and is the only thing protecting your timetable, so treat it like a
+password: do not paste it into issues, commits or screenshots.
+
+If you would rather build the link yourself, it is just:
 
 ```
-https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=<your-kcl-timetable-url>
+https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=<your-url-encoded-timetable-url>
 ```
-
-Your timetable URL comes from KCL's timetable site and looks like
-`https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/<uuid>/<uuid>/timetable.ics`. Nothing
-else is accepted: only HTTPS Scientia timetable URLs get fetched, so this cannot be used as a
-general proxy.
 
 ## Endpoints
 
 | Method | Path | Behaviour |
 | --- | --- | --- |
+| GET | `/` | Link builder. Paste a timetable URL, get a subscribe link. |
 | GET | `/health` | Returns `OK`. |
 | GET | `/enrich?url=<ics-url>` | Fetches, enriches and returns the calendar as `text/calendar`. |
 
@@ -58,7 +65,7 @@ Node 22 and pnpm.
 ```bash
 pnpm install
 pnpm dev        # wrangler dev on http://localhost:8787
-pnpm test       # 74 tests, no network access needed
+pnpm test       # 78 tests, no network access needed
 pnpm typecheck
 ```
 
