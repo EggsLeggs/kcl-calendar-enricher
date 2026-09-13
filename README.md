@@ -39,10 +39,15 @@ The room detail stays in the description, so nothing is lost.
 | `GEO` | the building the code names | a map pin, and travel time, with no geocoding |
 | `CATEGORIES` | the `Event type:` line | lectures, practicals and seminars you can filter or colour |
 | `CONTACT` | the `Staff:` line | who is teaching, without reading the description |
-| `REFRESH-INTERVAL` | the five minute cache in front of the feed | a room change that shows up today, not tomorrow |
+| `REFRESH-INTERVAL` and `X-PUBLISHED-TTL` | the five minute cache in front of the feed | a room change that shows up today, not tomorrow |
 
 `LOCATION` is the one that gets overwritten, because a bare room code is the bug this exists to fix.
 The rest are only added when KCL has not sent them itself.
+
+The last row is one fact in two spellings: `REFRESH-INTERVAL` is the standard property and
+`X-PUBLISHED-TTL` is the older one Outlook and Apple Calendar actually read. They go out together
+or not at all, so a feed that already sets either keeps its own answer rather than getting a second
+one beside it.
 
 Coordinates are building entrances and are approximate: close enough for a pin sitting beside the
 full address, not a survey.
