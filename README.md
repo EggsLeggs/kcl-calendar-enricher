@@ -143,4 +143,4 @@ What is left afterwards is only outside Cloudflare:
 
 ## Licence
 
-None declared yet. A personal project, and not affiliated with King's College London.
+MIT. A personal project, and not affiliated with King's College London.
