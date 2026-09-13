@@ -1,0 +1,34 @@
+name: CI
+
+# Nothing here writes to the repository. The deploy authenticates to Cloudflare with its own
+# API token, not with GITHUB_TOKEN.
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Typecheck and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      # No network access is needed: every test runs against test/fixtures/timetable.ics.
+      - run: pnpm test

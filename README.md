@@ -1,259 +1,147 @@
-# KCL Calendar Enricher
+# kcl-calendar-enricher
 
-A Java application that enriches King's College London (KCL) ICS calendar feeds with proper location metadata for Apple Calendar and other calendar applications. Updates the location field with full addresses for geocoding, while preserving original room details in the event description.
+KCL's timetable feed leaves `LOCATION` as a bare room code, so calendar apps show "KIN 625" and
+cannot map it. This Cloudflare Worker sits in front of the feed, reads the `Location:` line out of
+each event's description, expands the building code to a full street address, and writes it back.
 
-## ✨ Live Service
+Everything else in the feed is passed through byte for byte. There is no database, no build step
+and nothing to remember.
 
-The service is live at **https://kcl-calendar-enricher.thinkhuman.dev**
+**Before**
 
-### How to Use
+```
+LOCATION:KIN 625
+DESCRIPTION:Event type: Lecture\nDescription: AGENTS AND MULTI-AGENT SYSTEMS\n
+ Location: KINGS BLDG KIN 625 (Anatomy Lecture Theatre)\n...
+```
 
-1. **Get your KCL calendar URL** from https://mytimetable.kcl.ac.uk/ (it looks like `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../timetable.ics` and is provided when you click the subscribe button)
+**After**
 
-2. **Subscribe in your calendar app** using the enriched URL:
-   ```
-   https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=YOUR_KCL_CALENDAR_URL
-   ```
+```
+LOCATION:33-41 Surrey St\, London\, WC2R 2ND\, England
+DESCRIPTION:Event type: Lecture\nDescription: AGENTS AND MULTI-AGENT SYSTEMS\n
+ Location: KINGS BLDG KIN 625 (Anatomy Lecture Theatre)\n...
+```
 
-3. **Or test it directly** with curl:
-   ```bash
-   curl "https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=YOUR_KCL_CALENDAR_URL"
-   ```
+The room detail stays in the description, so nothing is lost.
 
-**Note:** Replace `YOUR_KCL_CALENDAR_URL` with your actual KCL calendar subscription URL (URL-encoded if using in a browser).
+## What is live
 
-## Features
+| Hostname | What it does |
+| --- | --- |
+| `kcl-calendar-enricher.amory.me` | The service |
+| `kcl-calendar-enricher.thinkhuman.dev` | 301s to the above, path and query kept |
 
-- ✅ Fetches ICS calendar feeds from KCL's Scientia system
-- ✅ Parses event descriptions to extract location information
-- ✅ Maps abbreviated building codes to full addresses
-- ✅ Serves enriched calendar feeds via HTTP
-- ✅ 5-minute caching for performance
-- ✅ ICS 2.0 compliant
-- ✅ Built with Test-Driven Development (TDD)
+The old hostname is a redirect held in [ThinkHumanDotDev/redirects](https://github.com/ThinkHumanDotDev/redirects),
+not something this Worker serves. Subscriptions created before the rename keep working.
 
-## Quick Start
+## Using it
 
-### Prerequisites
+Go to **https://kcl-calendar-enricher.amory.me**, paste your KCL timetable link, and it gives you a
+subscribe link to add to your calendar app. Add it as a subscribed or internet calendar rather than
+an import, so it keeps updating.
 
-- Java 17 or higher
-- Maven 3.9 or higher
+Your timetable URL comes from KCL's timetable system and looks like
+`https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/<uuid>/<uuid>/timetable.ics`. Any
+Scientia shard works, not just `d4-02`. Nothing else is accepted: only HTTPS Scientia timetable URLs
+are fetched, so this cannot be used as a general proxy.
 
-### Build
+That link is personal to you and is the only thing protecting your timetable, so treat it like a
+password. Do not paste it into issues, commits or screenshots.
+
+## Endpoints
+
+| Method | Path | Behaviour |
+| --- | --- | --- |
+| GET | `/` | Link builder. Paste a timetable URL, get a subscribe link. |
+| GET | `/health` | Returns `OK`. |
+| GET | `/enrich?url=<ics-url>` | Fetches, enriches and returns the calendar as `text/calendar`. |
+
+400 for a missing or disallowed `url`, 502 when the upstream fetch fails or returns something that
+is not a calendar, 500 otherwise. A successful `/enrich` carries
+`Cache-Control: public, max-age=300, stale-while-revalidate=600`, and Workers Cache serves repeat
+requests without invoking the Worker at all. Errors are not cached, `/health` is `no-store`, and the
+page at `/` is cached for an hour.
+
+## Deploying
+
+Add these two repository secrets once, under Settings, then Secrets and variables, then Actions:
+
+| Secret | Where it comes from |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | An API token with the Edit Cloudflare Workers template |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard, right hand column of the account overview |
+
+The Worker itself needs no secrets: it has no bindings, no `vars` and nothing that reads `env`.
+`wrangler secret put` is never needed here.
+
+After that there are three ways to deploy, and they all do the same thing:
+
+- Push to `main`. This is the usual one, and typecheck and tests gate it.
+- Actions, then Deploy, then Run workflow. One click, deploys whatever `main` holds.
+- `pnpm deploy` locally, once `pnpm wrangler login` has run.
+
+### The Deploy to Cloudflare button
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/EggsLeggs/kcl-calendar-enricher)
+
+The button stands up a separate copy: Cloudflare clones this repo into your own GitHub account,
+deploys the clone, and watches that clone from then on. It is the right thing for running your own
+enricher, and the wrong thing for changing this one, which is what the workflow above is for.
+
+A fresh copy answers on its own `workers.dev` subdomain, and the link builder at `/` follows
+whatever hostname it is served from, so there is nothing to edit before it works.
+
+## Local development
 
 ```bash
-mvn clean package
+pnpm install
+pnpm test        # 80 tests in the Workers runtime, no network access needed
+pnpm typecheck
+pnpm dev         # http://localhost:8787
 ```
 
-### Run
+Tests run inside the Workers runtime via `@cloudflare/vitest-pool-workers`, against
+`test/fixtures/timetable.ics`. There is no live feed dependency and no secret to set.
+
+## How it works
+
+| File | Responsibility |
+| --- | --- |
+| `src/index.ts` | Hono app. Three routes, the status mapping, the cache headers. |
+| `src/page.ts` | The link builder served at `/`. |
+| `src/upstream.ts` | The Scientia allowlist, and fetching with hand-followed redirects. |
+| `src/ics.ts` | Unfold, unescape, swap `LOCATION`, re-escape, refold. |
+| `src/parser.ts` | The five regexes that read a KCL `DESCRIPTION`. |
+| `src/locations.ts` | Building code to street address. |
+
+The ICS is rewritten as text, line by line, rather than parsed into an object model and serialised
+back. Only `LOCATION` changes; every other property keeps its original bytes and its original
+folding.
+
+## Adding a building
+
+Add the code and its address to `MAPPINGS` in `src/locations.ts`, then add a case to
+`test/locations.test.ts`. Codes match on whole words, and an underscore in a code matches an
+underscore, a space, or nothing, so `KINGS_BLDG` covers "KINGS BLDG", "KINGS_BLDG" and "KINGSBLDG".
+The first entry that matches wins, so put more specific codes above shorter ones.
+
+## Turning it off
 
 ```bash
-java -jar target/kcl-calendar-enricher-1.0-SNAPSHOT.jar
+pnpm wrangler delete kcl-calendar-enricher
 ```
 
-The server will start on port 8080.
+That deletes the Worker with its custom domain and the DNS record Cloudflare created for it, which
+is the whole footprint. There is no database, queue, KV namespace or stored secret to clean up.
 
-### Usage
+What is left afterwards is only outside Cloudflare:
 
-Enrich your KCL calendar by making a GET request:
+- The redirect in `ThinkHumanDotDev/redirects`, which would then point at nothing. Remove both
+  halves of it there.
+- The two repository secrets, if you want them gone.
+- This repository, and anyone's calendar subscription pointing at a hostname that no longer answers.
 
-```bash
-curl "http://localhost:8080/enrich?url=YOUR_KCL_CALENDAR_URL"
-```
+## Licence
 
-Or subscribe in your calendar app using:
-```
-http://localhost:8080/enrich?url=YOUR_KCL_CALENDAR_URL
-```
-
-Replace `YOUR_KCL_CALENDAR_URL` with your actual KCL calendar subscription URL.
-
-## Example
-
-**Before (Original KCL Calendar):**
-```
-LOCATION: KINGS BLDG KIN 625
-DESCRIPTION: Module Code: 6CCS3PRJ
-             Location: KINGS BLDG KIN 625
-```
-
-**After (Enriched):**
-```
-LOCATION: 33-41 Surrey St, London, WC2R 2ND, England
-DESCRIPTION: Module Code: 6CCS3PRJ
-             Location: KINGS BLDG KIN 625
-```
-
-The enricher updates only the LOCATION field with the full address for proper geocoding in calendar apps (particularly Apple Calendar). The original location details including room numbers remain in the event description.
-
-## Security: URL Validation
-
-For security, the service strictly validates all calendar URLs with the following requirements:
-
-- **HTTPS Only**: Only HTTPS URLs are accepted
-- **Exact Domain**: Must be from `scientia-eu-v4-api-d4-02.azurewebsites.net` (KCL's official Scientia calendar domain)
-- **Path Requirements**:
-  - Must start with `/api/ical/`
-  - Must end with `/timetable.ics`
-
-Any URL that doesn't meet these criteria will be rejected with a `400 Bad Request` response.
-
-**Valid URL format:**
-```
-https://scientia-eu-v4-api-d4-02.azurewebsites.net/api/ical/{uuid}/{uuid}/timetable.ics
-```
-
-**Examples:**
-- ✅ `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/{uuid}/{uuid}/timetable.ics`
-- ❌ `http://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../timetable.ics` (not HTTPS)
-- ❌ `https://other-domain.azurewebsites.net//api/ical/.../timetable.ics` (wrong domain)
-- ❌ `https://scientia-eu-v4-api-d4-02.azurewebsites.net/other/path/.../timetable.ics` (wrong path prefix)
-- ❌ `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../calendar.ics` (wrong filename)
-
-## Building Codes Supported
-
-- King's Building (KINGS_BLDG, KINGS_BDLG, KIN) → 33-41 Surrey St, London, WC2R 2ND
-- Strand Building (STRAND_BLDG, STR) → 33-41 Surrey St, London, WC2R 2ND
-- Franklin-Wilkins Building (WATERLOO, FWB) → Stamford St, London SE1 9NH
-- Bush House (BUSH_HOUSE, BSH) → 30 Bush House, Aldwych, London, WC2B 4BG
-- IET Turing (IET_TURING, IET, TURING) → 2 Savoy Pl, London, WC2R 0BL
-- Somerset House (SOMERSET_HOUSE, SOM) → Somerset House, Strand, London WC2R 1LA
-- Maughan Library (MAUGHAN, MAU) → Chancery Lane, London WC2A 1LR
-- Guy's Campus (GUYS, GUY) → Great Maze Pond, London SE1 1UL
-- St Thomas' Campus (ST_THOMAS, STH) → Westminster Bridge Rd, London SE1 7EH
-- Denmark Hill Campus (DENMARK_HILL, DEN) → Denmark Hill, London SE5 9RS
-
-## Docker Deployment
-
-### Development
-```bash
-# Build and run locally
-docker-compose -f docker-compose.dev.yml up --build
-```
-
-### Production
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed production deployment instructions using Portainer and Cloudflare Tunnel.
-
-Quick production start:
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env and add your Cloudflare tunnel token
-# Then start the services
-docker-compose up -d
-```
-
-The production setup includes:
-- Application container with health checks
-- Cloudflare Tunnel for secure access
-- Shared internal network
-- Automatic restarts and log rotation
-
-## CI/CD
-
-This project uses GitHub Actions for continuous integration and deployment:
-
-### On Pull Request
-- ✅ Run tests with JUnit 5
-- ✅ Generate code coverage reports with JaCoCo (minimum 50% coverage)
-- ✅ Post coverage summary as PR comment with detailed metrics
-- ✅ Upload test results and coverage artifacts
-
-### On Push to Main
-- ✅ Run full test suite
-- ✅ Build Docker image
-- ✅ Push to GitHub Container Registry
-- ✅ Tag with `latest` and commit SHA
-- ✅ Trigger Portainer webhook for automatic redeployment
-
-**Docker Image**: `ghcr.io/eggsleggs/kcl-calendar-enricher:latest`
-
-### Required GitHub Secrets
-
-The following secrets must be configured in your repository (Settings → Secrets and variables → Actions):
-
-1. **`TEST_CALENDAR_URL`** - Your KCL calendar URL for running integration tests
-2. **`PORTAINER_WEBHOOK_URL`** - Portainer webhook URL for triggering automatic redeployment
-3. **`CF_ACCESS_CLIENT_ID`** - Cloudflare Zero Trust client ID for Portainer webhook authentication
-4. **`CF_ACCESS_CLIENT_SECRET`** - Cloudflare Zero Trust client secret for Portainer webhook authentication
-
-**Security Note:** Never commit these secrets to the repository. They are automatically injected by GitHub Actions during CI/CD runs.
-
-## Testing
-
-### Setting up Test Environment
-
-Tests require a valid KCL calendar URL to be set as an environment variable:
-
-```bash
-export TEST_CALENDAR_URL="https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/.../timetable.ics"
-```
-
-**Note:** For security, the calendar URL is not hardcoded in tests and must be provided via environment variable.
-
-### Running Tests
-
-Run all tests:
-```bash
-mvn test
-```
-
-Run tests with coverage:
-```bash
-mvn clean verify
-```
-
-Coverage reports are generated in `target/site/jacoco/index.html`
-
-### CI/CD Test Configuration
-
-For GitHub Actions CI/CD, add the `TEST_CALENDAR_URL` as a repository secret:
-
-1. Go to your repository → Settings → Secrets and variables → Actions
-2. Click "New repository secret"
-3. Name: `TEST_CALENDAR_URL`
-4. Value: Your KCL calendar URL
-5. Click "Add secret"
-
-The CI workflow will automatically use this secret when running tests.
-
-## Project Structure
-
-```
-src/
-├── main/java/com/kcl/calendar/
-│   ├── CalendarEnricherApplication.java  # Main application
-│   ├── model/EventMetadata.java          # Event data model
-│   ├── parser/EventBodyParser.java       # Parses event descriptions
-│   └── service/
-│       ├── CalendarEnricher.java         # Main enrichment service
-│       ├── CalendarFetcher.java          # Fetches calendars
-│       └── LocationMapper.java           # Maps locations
-└── test/java/com/kcl/calendar/          # JUnit tests
-```
-
-## API Endpoints
-
-- `GET /health` - Health check
-- `GET /enrich?url=<calendar-url>` - Enrich and return calendar
-
-## Configuration
-
-Edit `src/main/resources/location-mappings.properties` to add or modify building mappings.
-
-## Development
-
-This project was built using Test-Driven Development (TDD) with JUnit 5. Each component has comprehensive tests written before implementation.
-
-## Technology Stack
-
-- Java 17
-- Maven 3.9
-- iCal4j 3.2.14 (ICS parsing)
-- Javalin 5.6.3 (HTTP server)
-- JUnit 5 (Testing)
-
-## License
-
-Personal project for enriching KCL calendar feeds. Not affiliated with King's College London.
+MIT. A personal project, and not affiliated with King's College London.
