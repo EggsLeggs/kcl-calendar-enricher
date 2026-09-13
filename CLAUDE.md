@@ -1,7 +1,7 @@
 # KCL Calendar Enricher
 
-A Cloudflare Worker that proxies a KCL Scientia ICS timetable and fills in each event's `LOCATION`
-from the `Location:` line inside its `DESCRIPTION`. Deployed to
+A Cloudflare Worker that proxies a KCL Scientia ICS timetable and fills in the properties KCL
+leaves out, reading them from the structured text inside each event's `DESCRIPTION`. Deployed to
 `kcl-calendar-enricher.amory.me`. No bindings, no secrets, no database.
 
 `kcl-calendar-enricher.thinkhuman.dev` is the hostname this used to answer on. It is now a 301
@@ -11,11 +11,27 @@ rename still resolve. Nothing here serves it, and nothing here should hard-code 
 
 ## The one architectural rule
 
-**Only `LOCATION` changes.** The ICS is rewritten as text, line by line, so every other property
-survives byte for byte including its original folding. Do not introduce an ICS object model: a
-parse-and-reserialise would rewrite the whole document to its own conventions and drift from what
-KCL sent, for no gain. `test/ics.test.ts` asserts this directly, by diffing every non-`LOCATION`
-line before and after.
+**Only the managed properties change.** The ICS is rewritten as text, line by line, so every other
+property survives byte for byte including its original folding. Line endings are the one exception:
+output is always CRLF, as RFC 5545 requires, whatever the source used. Do not introduce an ICS
+object model: a parse-and-reserialise would rewrite the whole document to its own conventions and
+drift from what KCL sent, for no gain. `test/ics.test.ts` asserts this directly, by diffing every
+line outside `MANAGED` and `REFRESH` before and after.
+
+The managed set is `MANAGED` and `REFRESH` in `src/ics.ts`, and adding to it is a deliberate act,
+not a convenience:
+
+| Property | From | Written |
+| --- | --- | --- |
+| `LOCATION` | the `Location:` line, expanded to a street address | overwritten |
+| `GEO` | the coordinate on the matched building | added if absent |
+| `CATEGORIES` | the `Event type:` line | added if absent |
+| `CONTACT` | the `Staff:` line, as one value | added if absent |
+| `REFRESH-INTERVAL`, `X-PUBLISHED-TTL` | the response's own `max-age` | added as a pair, if neither is present |
+
+`LOCATION` is the exception that is overwritten, because a bare room code is the bug this service
+exists to fix. For the rest, a value KCL derived itself beats one inferred from its prose, so if it
+ever starts sending them, its own wins.
 
 ## Layout
 
@@ -24,9 +40,9 @@ line before and after.
 | `src/index.ts` | Hono app. Three routes, the status mapping, and the cache headers. |
 | `src/page.ts` | The link builder served at `/`. One static string, no dependencies. |
 | `src/upstream.ts` | The Scientia allowlist, and fetching with hand-followed redirects. |
-| `src/ics.ts` | Unfold, unescape, swap `LOCATION`, re-escape, refold. |
+| `src/ics.ts` | Unfold, unescape, write the managed properties, re-escape, refold. |
 | `src/parser.ts` | The five regexes that read a KCL `DESCRIPTION`. |
-| `src/locations.ts` | Building code to street address. |
+| `src/locations.ts` | Building code to street address and coordinate. |
 
 The page at `/` repeats the host check from `src/upstream.ts` in its client-side JavaScript, so a
 wrong URL is caught before someone subscribes to a 400. **Change the two together**; a test asserts
@@ -55,7 +71,12 @@ dash would join a range or an aside, write `to`, a comma, or a full stop.
 - An unmapped location still overwrites `LOCATION` with the raw text from the `DESCRIPTION`. That is
   what the original Java did, and it is better than leaving a bare room code.
 - A `VALARM` carries its own `DESCRIPTION`. `enrichEvent` tracks nesting depth so it reads the
-  event's, not the reminder's.
+  event's, not the reminder's, and it splices added properties in ahead of the `VALARM` rather than
+  appending them. RFC 5545 spells a `VEVENT` as its properties followed by its alarms.
+- `CONTACT` carries the whole `Staff:` line rather than one property per person. KCL writes
+  "Surname, Forename, Surname, Forename" and nothing distinguishes a name boundary from a list
+  boundary. `ATTENDEE` is wrong for a different reason: it needs a `CAL-ADDRESS`, and it would make
+  a read-only timetable look like an invitation waiting on an RSVP.
 - The allowlist is a pattern over the whole Scientia shard family, not one host. KCL issues
   different students links on different shards, and pinning `d4-02` returned 400 for everyone else.
 
@@ -75,7 +96,7 @@ repo in October 2025 and stayed there for eleven months. Test fixtures use obvio
 ## Testing
 
 ```bash
-pnpm test       # 80 tests in the Workers runtime, no network
+pnpm test       # 93 tests in the Workers runtime, no network
 pnpm typecheck
 ```
 

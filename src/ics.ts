@@ -1,18 +1,41 @@
 /**
- * Rewrites the LOCATION property of each VEVENT from the location named in its DESCRIPTION.
+ * Fills in the properties KCL leaves out, from the structured text it puts in each event's
+ * DESCRIPTION.
  *
- * This works on the raw text rather than through an ICS object model, which is deliberate. Only
- * LOCATION changes; every other line - VTIMEZONE blocks, DTSTART, RRULE, and anything else KCL
- * emits - is copied through byte for byte, including its original folding. A parse-and-reserialise
- * would rewrite the whole document to its own conventions and drift from the source for no gain.
+ * This works on the raw text rather than through an ICS object model, which is deliberate. Only the
+ * properties in MANAGED are written; every other line - VTIMEZONE blocks, DTSTART, RRULE, and
+ * anything else KCL emits - is copied through byte for byte, including its original folding. A
+ * parse-and-reserialise would rewrite the whole document to its own conventions and drift from the
+ * source for no gain.
  *
  * The one normalisation applied is line endings: output is always CRLF, as RFC 5545 requires.
  */
 
-import { mapLocation } from './locations.ts'
+import { findPlace } from './locations.ts'
 import { parse } from './parser.ts'
 
 const CRLF = '\r\n'
+
+/**
+ * The event properties this module writes. LOCATION is overwritten because a bare room code is the
+ * bug this service exists to fix. The rest are only ever added, never replaced: KCL does not emit
+ * them today, and if it ever starts, a value it derived itself beats one we inferred from prose.
+ */
+export const MANAGED = ['LOCATION', 'GEO', 'CATEGORIES', 'CONTACT'] as const
+
+/**
+ * How often a client should re-read the feed. REFRESH-INTERVAL is the RFC 7986 property;
+ * X-PUBLISHED-TTL is the older spelling that Outlook and Apple Calendar actually read, so both go
+ * out. PT5M matches the max-age on the response, so a client that honours either sees a room change
+ * about as soon as the cache does rather than at whatever daily poll it would otherwise pick.
+ *
+ * They are one fact in two spellings, so they are added together or not at all. Adding our PT5M
+ * beside a PT1H of KCL's would be two answers to the same question.
+ */
+export const REFRESH = [
+  'REFRESH-INTERVAL;VALUE=DURATION:PT5M',
+  'X-PUBLISHED-TTL:PT5M',
+] as const
 
 /** RFC 5545 says content lines SHOULD be folded at 75 octets, excluding the CRLF. */
 const FOLD_LIMIT = 75
@@ -138,30 +161,10 @@ function splitProperty(content: string): { name: string; value: string } | null 
  * entry.
  */
 function enrichEvent(body: LogicalLine[]): LogicalLine[] {
-  let depth = 0
-  let descriptionIndex = -1
-  let locationIndex = -1
+  const { own, insertAt } = ownProperties(body)
 
-  for (const [index, line] of body.entries()) {
-    const property = splitProperty(line.content)
-    if (property === null) {
-      continue
-    }
-
-    if (property.name === 'BEGIN') {
-      depth++
-    } else if (property.name === 'END') {
-      depth--
-    } else if (depth === 0) {
-      if (property.name === 'DESCRIPTION' && descriptionIndex === -1) {
-        descriptionIndex = index
-      } else if (property.name === 'LOCATION' && locationIndex === -1) {
-        locationIndex = index
-      }
-    }
-  }
-
-  if (descriptionIndex === -1) {
+  const descriptionIndex = own.get('DESCRIPTION')
+  if (descriptionIndex === undefined) {
     return body
   }
 
@@ -171,23 +174,110 @@ function enrichEvent(body: LogicalLine[]): LogicalLine[] {
   }
 
   const parsed = parse(unescapeText(description.value))
-  if (parsed.location === null) {
-    return body
-  }
-
-  // An unmapped location still overwrites LOCATION with the raw text from the DESCRIPTION, which
-  // is what the Java service did - mapLocation returns its input when no building code matches.
-  const address = mapLocation(parsed.location) ?? parsed.location
-  const replacement = logicalLine(`LOCATION:${escapeText(address)}`)
-
+  const place = findPlace(parsed.location)
   const result = [...body]
-  if (locationIndex === -1) {
-    result.push(replacement)
-  } else {
-    result[locationIndex] = replacement
+  const added: LogicalLine[] = []
+
+  /** Adds a property, or replaces the event's existing one when `overwrite` is set. */
+  const set = (content: string, overwrite = false): void => {
+    const existing = own.get(splitProperty(content)?.name ?? '')
+    if (existing === undefined) {
+      added.push(logicalLine(content))
+    } else if (overwrite) {
+      result[existing] = logicalLine(content)
+    }
   }
+
+  if (parsed.location !== null) {
+    // An unmapped location still overwrites LOCATION with the raw text from the DESCRIPTION, which
+    // is what the Java service did. A bare room code is worse than an unexpanded building name.
+    set(`LOCATION:${escapeText(place?.address ?? parsed.location)}`, true)
+  }
+
+  if (place !== null) {
+    // GEO is two semicolon-separated floats, latitude first, and is not a TEXT value, so it is not
+    // escaped. It saves the client a geocoding round trip and gives it a pin for travel time.
+    set(`GEO:${place.geo[0]};${place.geo[1]}`)
+  }
+
+  if (parsed.eventType !== null) {
+    // "Lecture", "Practical", "Seminar". CATEGORIES is a comma-separated list, and escapeText
+    // escapes the comma, so a type containing one stays a single category.
+    set(`CATEGORIES:${escapeText(parsed.eventType)}`)
+  }
+
+  if (parsed.staff !== null) {
+    // KCL writes staff as "Surname, Forename, Surname, Forename", with no way to tell a name
+    // boundary from a list boundary, so it goes out as one CONTACT rather than a guessed split.
+    // ATTENDEE is the wrong property regardless: it needs a CAL-ADDRESS, and it would make a
+    // read-only timetable look like an invitation the client should RSVP to.
+    set(`CONTACT:${escapeText(parsed.staff)}`)
+  }
+
+  // RFC 5545 spells a VEVENT as its properties followed by its alarms, so anything added has to go
+  // in ahead of the first nested component rather than on the end.
+  result.splice(insertAt, 0, ...added)
 
   return result
+}
+
+/**
+ * Indexes an event's own properties by name, first occurrence winning, and finds where a new
+ * property belongs: just before the first nested component, or at the end when there is none.
+ *
+ * Nested components are skipped: a VALARM carries its own DESCRIPTION, and picking that one up
+ * would read the reminder text instead of the timetable entry.
+ */
+function ownProperties(body: LogicalLine[]): { own: Map<string, number>; insertAt: number } {
+  const own = new Map<string, number>()
+  let depth = 0
+  let insertAt = body.length
+
+  for (const [index, line] of body.entries()) {
+    const property = splitProperty(line.content)
+    if (property === null) {
+      continue
+    }
+
+    if (property.name === 'BEGIN') {
+      if (depth === 0 && insertAt === body.length) {
+        insertAt = index
+      }
+      depth++
+    } else if (property.name === 'END') {
+      depth--
+    } else if (depth === 0 && !own.has(property.name)) {
+      own.set(property.name, index)
+    }
+  }
+
+  return { own, insertAt }
+}
+
+/**
+ * The names of the properties sitting directly in VCALENDAR, so the refresh hints are only added
+ * when KCL has not sent its own. Properties inside VEVENT and VTIMEZONE do not count.
+ */
+function calendarProperties(lines: LogicalLine[]): Set<string> {
+  const names = new Set<string>()
+  let depth = 0
+
+  for (const line of lines) {
+    const property = splitProperty(line.content)
+    if (property === null) {
+      continue
+    }
+
+    if (property.name === 'BEGIN') {
+      depth++
+    } else if (property.name === 'END') {
+      depth--
+    } else if (depth === 1) {
+      names.add(property.name)
+    }
+  }
+
+  return names
 }
 
 /**
@@ -199,6 +289,8 @@ export function enrichCalendar(ics: string): string {
   // A byte order mark would otherwise attach itself to the first property name.
   const lines = parseLines(ics.startsWith('\uFEFF') ? ics.slice(1) : ics)
 
+  const calendar = calendarProperties(lines)
+
   const out: LogicalLine[] = []
   let event: LogicalLine[] | null = null
   let sawCalendar = false
@@ -206,8 +298,13 @@ export function enrichCalendar(ics: string): string {
   for (const line of lines) {
     const marker = line.content.trim().toUpperCase()
 
-    if (marker === 'BEGIN:VCALENDAR') {
+    if (marker === 'BEGIN:VCALENDAR' && !sawCalendar) {
       sawCalendar = true
+      out.push(line)
+      if (REFRESH.every((property) => !calendar.has(splitProperty(property)?.name ?? ''))) {
+        out.push(...REFRESH.map(logicalLine))
+      }
+      continue
     }
 
     if (event === null) {

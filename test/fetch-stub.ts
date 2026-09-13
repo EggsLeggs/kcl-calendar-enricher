@@ -39,3 +39,15 @@ export const redirect = (to: string, code = 302): Response =>
   new Response(null, { status: code, headers: { location: to } })
 
 export const noLocationRedirect = (): Response => new Response(null, { status: 302 })
+
+/** A 200 whose body errors part way through, as a dropped connection would. */
+export const brokenBody = (): Response =>
+  new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('BEGIN:VCALENDAR\r\n'))
+        controller.error(new Error('connection reset while reading body'))
+      },
+    }),
+    { status: 200 },
+  )

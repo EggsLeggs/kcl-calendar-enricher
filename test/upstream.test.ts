@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UpstreamError, ValidationError, fetchIcs, validateUrl } from '../src/upstream.ts'
-import { noLocationRedirect, ok, redirect, serve, status, stubFetch } from './fetch-stub.ts'
+import { brokenBody, noLocationRedirect, ok, redirect, serve, status, stubFetch } from './fetch-stub.ts'
 import fixture from './fixtures/timetable.ics?raw'
 
 const ORIGIN = 'https://scientia-eu-v4-api-d4-02.azurewebsites.net'
@@ -140,6 +140,15 @@ describe('fetchIcs', () => {
 
     await expect(fetchIcs(VALID)).rejects.toThrow(UpstreamError)
     await expect(fetchIcs(VALID)).rejects.toThrow(/invalid Location header/)
+  })
+
+  it('wraps a body that fails part way through', async () => {
+    // The status line said 200, so this gets past every check above. A 500 would blame us for the
+    // connection dropping.
+    serve(PATH, brokenBody)
+
+    await expect(fetchIcs(VALID)).rejects.toThrow(UpstreamError)
+    await expect(fetchIcs(VALID)).rejects.toThrow(/Failed to read calendar body/)
   })
 
   it('gives up on a redirect loop', async () => {
