@@ -26,7 +26,16 @@
     }
   },
 
-  // Cutover step 1. At step 2 this gains a route for kcl-calendar-enricher.thinkhuman.dev, and at
-  // step 4d the route becomes a custom domain and workers_dev goes to false. See the migration plan.
-  "workers_dev": true
+  // A fresh hostname with no existing DNS record, so Cloudflare creates it on the first deploy and
+  // there is no CNAME to displace. The old kcl-calendar-enricher.thinkhuman.dev is a 301 owned by
+  // the ThinkHumanDotDev/redirects Worker, not served from here.
+  "routes": [
+    {
+      "pattern": "kcl-calendar-enricher.amory.me",
+      "custom_domain": true
+    }
+  ],
+
+  // One canonical URL. The workers.dev subdomain would be a second, unadvertised way in.
+  "workers_dev": false
 }

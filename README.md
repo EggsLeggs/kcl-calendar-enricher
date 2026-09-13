@@ -1,11 +1,11 @@
-# KCL Calendar Enricher
+# kcl-calendar-enricher
 
-KCL's Scientia timetable feed puts the room in the event description and leaves `LOCATION` as a bare
-room code, so calendar apps cannot map it. This service sits in front of the feed, reads the
-`Location:` line out of each event's description, expands the building code to a full street
-address, and writes it back into `LOCATION`.
+KCL's timetable feed leaves `LOCATION` as a bare room code, so calendar apps show "KIN 625" and
+cannot map it. This Cloudflare Worker sits in front of the feed, reads the `Location:` line out of
+each event's description, expands the building code to a full street address, and writes it back.
 
-Everything else in the feed is passed through byte for byte.
+Everything else in the feed is passed through byte for byte. There is no database, no build step
+and nothing to remember.
 
 **Before**
 
@@ -25,24 +25,29 @@ DESCRIPTION:Event type: Lecture\nDescription: AGENTS AND MULTI-AGENT SYSTEMS\n
 
 The room detail stays in the description, so nothing is lost.
 
+## What is live
+
+| Hostname | What it does |
+| --- | --- |
+| `kcl-calendar-enricher.amory.me` | The service |
+| `kcl-calendar-enricher.thinkhuman.dev` | 301s to the above, path and query kept |
+
+The old hostname is a redirect held in [ThinkHumanDotDev/redirects](https://github.com/ThinkHumanDotDev/redirects),
+not something this Worker serves. Subscriptions created before the rename keep working.
+
 ## Using it
 
-Go to **https://kcl-calendar-enricher.thinkhuman.dev**, paste your KCL timetable link, and it gives
-you a subscribe link to add to your calendar app.
+Go to **https://kcl-calendar-enricher.amory.me**, paste your KCL timetable link, and it gives you a
+subscribe link to add to your calendar app. Add it as a subscribed or internet calendar rather than
+an import, so it keeps updating.
 
 Your timetable URL comes from KCL's timetable system and looks like
 `https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/<uuid>/<uuid>/timetable.ics`. Any
 Scientia shard works, not just `d4-02`. Nothing else is accepted: only HTTPS Scientia timetable URLs
-get fetched, so this cannot be used as a general proxy.
+are fetched, so this cannot be used as a general proxy.
 
 That link is personal to you and is the only thing protecting your timetable, so treat it like a
-password: do not paste it into issues, commits or screenshots.
-
-If you would rather build the link yourself, it is just:
-
-```
-https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=<your-url-encoded-timetable-url>
-```
+password. Do not paste it into issues, commits or screenshots.
 
 ## Endpoints
 
@@ -52,25 +57,66 @@ https://kcl-calendar-enricher.thinkhuman.dev/enrich?url=<your-url-encoded-timeta
 | GET | `/health` | Returns `OK`. |
 | GET | `/enrich?url=<ics-url>` | Fetches, enriches and returns the calendar as `text/calendar`. |
 
-Errors follow the original service: 400 for a missing or disallowed `url`, 502 when the upstream
-fetch fails or returns something that is not a calendar, 500 otherwise.
+400 for a missing or disallowed `url`, 502 when the upstream fetch fails or returns something that
+is not a calendar, 500 otherwise. Responses carry
+`Cache-Control: public, max-age=300, stale-while-revalidate=600`, and Workers Cache serves repeat
+requests without invoking the Worker at all.
 
-Responses carry `Cache-Control: public, max-age=300, stale-while-revalidate=600`, and Workers Cache
-serves repeat requests without invoking the Worker.
+## Deploying
 
-## Development
+Add these two repository secrets once, under Settings, then Secrets and variables, then Actions:
 
-Node 22 and pnpm.
+| Secret | Where it comes from |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | An API token with the Edit Cloudflare Workers template |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard, right hand column of the account overview |
+
+The Worker itself needs no secrets: it has no bindings, no `vars` and nothing that reads `env`.
+`wrangler secret put` is never needed here.
+
+After that there are three ways to deploy, and they all do the same thing:
+
+- Push to `main`. This is the usual one, and typecheck and tests gate it.
+- Actions, then Deploy, then Run workflow. One click, deploys whatever `main` holds.
+- `pnpm deploy` locally, once `pnpm wrangler login` has run.
+
+### The Deploy to Cloudflare button
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/EggsLeggs/kcl-calendar-enricher)
+
+The button stands up a separate copy: Cloudflare clones this repo into your own GitHub account,
+deploys the clone, and watches that clone from then on. It is the right thing for running your own
+enricher, and the wrong thing for changing this one, which is what the workflow above is for.
+
+A fresh copy answers on its own `workers.dev` subdomain, and the link builder at `/` follows
+whatever hostname it is served from, so there is nothing to edit before it works.
+
+## Local development
 
 ```bash
 pnpm install
-pnpm dev        # wrangler dev on http://localhost:8787
-pnpm test       # 78 tests, no network access needed
+pnpm test        # 79 tests in the Workers runtime, no network access needed
 pnpm typecheck
+pnpm dev         # http://localhost:8787
 ```
 
 Tests run inside the Workers runtime via `@cloudflare/vitest-pool-workers`, against
-`test/fixtures/timetable.ics`. There is no live-feed dependency and no secret to set.
+`test/fixtures/timetable.ics`. There is no live feed dependency and no secret to set.
+
+## How it works
+
+| File | Responsibility |
+| --- | --- |
+| `src/index.ts` | Hono app. Three routes, the status mapping, the cache headers. |
+| `src/page.ts` | The link builder served at `/`. |
+| `src/upstream.ts` | The Scientia allowlist, and fetching with hand-followed redirects. |
+| `src/ics.ts` | Unfold, unescape, swap `LOCATION`, re-escape, refold. |
+| `src/parser.ts` | The five regexes that read a KCL `DESCRIPTION`. |
+| `src/locations.ts` | Building code to street address. |
+
+The ICS is rewritten as text, line by line, rather than parsed into an object model and serialised
+back. Only `LOCATION` changes; every other property keeps its original bytes and its original
+folding.
 
 ## Adding a building
 
@@ -79,16 +125,22 @@ Add the code and its address to `MAPPINGS` in `src/locations.ts`, then add a cas
 underscore, a space, or nothing, so `KINGS_BLDG` covers "KINGS BLDG", "KINGS_BLDG" and "KINGSBLDG".
 The first entry that matches wins, so put more specific codes above shorter ones.
 
-## Deployment
-
-A Cloudflare Worker on `kcl-calendar-enricher.thinkhuman.dev`, deployed by
-`.github/workflows/deploy.yml` on every push to `main` that touches the Worker. Typecheck and tests
-gate the deploy.
+## Turning it off
 
 ```bash
-pnpm deploy     # or let CI do it
+pnpm wrangler delete kcl-calendar-enricher
 ```
 
-The Worker needs no bindings, no secrets and no `nodejs_compat`.
+That deletes the Worker with its custom domain and the DNS record Cloudflare created for it, which
+is the whole footprint. There is no database, queue, KV namespace or stored secret to clean up.
 
-## Not affiliated with King's College London.
+What is left afterwards is only outside Cloudflare:
+
+- The redirect in `ThinkHumanDotDev/redirects`, which would then point at nothing. Remove both
+  halves of it there.
+- The two repository secrets, if you want them gone.
+- This repository, and anyone's calendar subscription pointing at a hostname that no longer answers.
+
+## Licence
+
+None declared yet. A personal project, and not affiliated with King's College London.

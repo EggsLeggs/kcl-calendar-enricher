@@ -17,7 +17,7 @@ const ALLOWED_HOST_DESCRIPTION = 'scientia-eu-v4-api-d<n>-<nn>.azurewebsites.net
 
 const TIMEOUT_MS = 30_000
 const MAX_REDIRECTS = 3
-const USER_AGENT = 'kcl-calendar-enricher (+https://kcl-calendar-enricher.thinkhuman.dev)'
+const USER_AGENT = 'kcl-calendar-enricher (+https://kcl-calendar-enricher.amory.me)'
 
 /** The caller gave us a URL we will not fetch. Surfaces as a 400. */
 export class ValidationError extends Error {

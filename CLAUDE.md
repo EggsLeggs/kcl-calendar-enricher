@@ -2,7 +2,12 @@
 
 A Cloudflare Worker that proxies a KCL Scientia ICS timetable and fills in each event's `LOCATION`
 from the `Location:` line inside its `DESCRIPTION`. Deployed to
-`kcl-calendar-enricher.thinkhuman.dev`. No bindings, no secrets, no database.
+`kcl-calendar-enricher.amory.me`. No bindings, no secrets, no database.
+
+`kcl-calendar-enricher.thinkhuman.dev` is the hostname this used to answer on. It is now a 301
+held in `ThinkHumanDotDev/redirects`, keeping path and query so subscriptions made before the
+rename still resolve. Nothing here serves it, and nothing here should hard-code either hostname:
+`src/page.ts` builds links from `location.origin` and a test enforces that.
 
 ## The one architectural rule
 
@@ -70,7 +75,7 @@ repo in October 2025 and stayed there for eleven months. Test fixtures use obvio
 ## Testing
 
 ```bash
-pnpm test       # 78 tests in the Workers runtime, no network
+pnpm test       # 79 tests in the Workers runtime, no network
 pnpm typecheck
 ```
 

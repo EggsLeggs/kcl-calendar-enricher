@@ -30,6 +30,15 @@ describe('GET /', () => {
 
     expect(body).toContain(String.raw`/^scientia-eu-v4-api-d\d{1,2}-\d{1,2}\.azurewebsites\.net$/`)
   })
+
+  it('builds subscribe links from location.origin, never a hard-coded hostname', async () => {
+    // The service has already moved hostname once. A baked-in origin would hand people links to
+    // whichever domain happened to be current when the page was written.
+    const body = await (await SELF.fetch('https://enricher.test/')).text()
+
+    expect(body).toContain('location.origin')
+    expect(body).not.toMatch(/https:\/\/kcl-calendar-enricher\.[a-z.]+\/enrich/)
+  })
 })
 
 describe('GET /health', () => {
