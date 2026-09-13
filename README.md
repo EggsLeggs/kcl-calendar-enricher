@@ -58,9 +58,10 @@ password. Do not paste it into issues, commits or screenshots.
 | GET | `/enrich?url=<ics-url>` | Fetches, enriches and returns the calendar as `text/calendar`. |
 
 400 for a missing or disallowed `url`, 502 when the upstream fetch fails or returns something that
-is not a calendar, 500 otherwise. Responses carry
+is not a calendar, 500 otherwise. A successful `/enrich` carries
 `Cache-Control: public, max-age=300, stale-while-revalidate=600`, and Workers Cache serves repeat
-requests without invoking the Worker at all.
+requests without invoking the Worker at all. Errors are not cached, `/health` is `no-store`, and the
+page at `/` is cached for an hour.
 
 ## Deploying
 
@@ -95,7 +96,7 @@ whatever hostname it is served from, so there is nothing to edit before it works
 
 ```bash
 pnpm install
-pnpm test        # 79 tests in the Workers runtime, no network access needed
+pnpm test        # 80 tests in the Workers runtime, no network access needed
 pnpm typecheck
 pnpm dev         # http://localhost:8787
 ```

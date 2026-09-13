@@ -134,6 +134,14 @@ describe('fetchIcs', () => {
     await expect(fetchIcs(VALID)).rejects.toThrow(UpstreamError)
   })
 
+  it('rejects a redirect whose Location header will not parse', async () => {
+    // A 500 would be wrong here: the caller's URL was fine, the upstream's answer was not.
+    serve(PATH, () => redirect('http://['))
+
+    await expect(fetchIcs(VALID)).rejects.toThrow(UpstreamError)
+    await expect(fetchIcs(VALID)).rejects.toThrow(/invalid Location header/)
+  })
+
   it('gives up on a redirect loop', async () => {
     serve(PATH, () => redirect(VALID))
 

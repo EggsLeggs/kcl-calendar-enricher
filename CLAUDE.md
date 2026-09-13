@@ -75,7 +75,7 @@ repo in October 2025 and stayed there for eleven months. Test fixtures use obvio
 ## Testing
 
 ```bash
-pnpm test       # 79 tests in the Workers runtime, no network
+pnpm test       # 80 tests in the Workers runtime, no network
 pnpm typecheck
 ```
 

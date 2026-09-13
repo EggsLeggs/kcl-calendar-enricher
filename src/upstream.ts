@@ -98,7 +98,16 @@ export async function fetchIcs(raw: string): Promise<string> {
       if (location === null) {
         throw new UpstreamError(`HTTP ${response.status} with no Location header`)
       }
-      url = validateUrl(new URL(location, url).toString())
+      // Resolving the header can throw on its own: a garbage Location is an upstream fault, not a
+      // caller fault, so it has to become an UpstreamError rather than escaping as a 500. The
+      // allowlist check stays outside, where a well formed but disallowed target still means 400.
+      let target: URL
+      try {
+        target = new URL(location, url)
+      } catch {
+        throw new UpstreamError(`HTTP ${response.status} with an invalid Location header`)
+      }
+      url = validateUrl(target.toString())
       continue
     }
 

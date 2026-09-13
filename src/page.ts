@@ -58,7 +58,7 @@ export const PAGE = String.raw`<!doctype html>
     border-radius: 7px;
   }
   input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button {
+  button, a.button {
     font: inherit;
     font-weight: 600;
     padding: .55rem 1rem;
@@ -68,7 +68,8 @@ export const PAGE = String.raw`<!doctype html>
     color: var(--bg);
     cursor: pointer;
   }
-  button.secondary { background: var(--card); color: var(--fg); border-color: var(--line); }
+  a.button { display: inline-block; line-height: 1.6; text-decoration: none; }
+  .secondary { background: var(--card); color: var(--fg); border-color: var(--line); }
   .row { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
   .row > * { flex: 0 0 auto; }
   #out { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
@@ -103,7 +104,7 @@ export const PAGE = String.raw`<!doctype html>
     <input id="link" readonly>
     <div class="row">
       <button type="button" id="copy" class="secondary">Copy</button>
-      <a id="webcal" href="#"><button type="button" class="secondary">Open in calendar app</button></a>
+      <a id="webcal" href="#" class="button secondary">Open in calendar app</a>
     </div>
     <p class="muted" style="margin-top:.9rem">
       Add it as a subscribed or internet calendar, not as an import, so it keeps updating. Changes to

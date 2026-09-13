@@ -1,5 +1,10 @@
 name: CI
 
+# Nothing here writes to the repository. The deploy authenticates to Cloudflare with its own
+# API token, not with GITHUB_TOKEN.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
