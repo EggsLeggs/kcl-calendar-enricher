@@ -12,10 +12,11 @@ rename still resolve. Nothing here serves it, and nothing here should hard-code 
 ## The one architectural rule
 
 **Only the managed properties change.** The ICS is rewritten as text, line by line, so every other
-property survives byte for byte including its original folding. Do not introduce an ICS object
-model: a parse-and-reserialise would rewrite the whole document to its own conventions and drift
-from what KCL sent, for no gain. `test/ics.test.ts` asserts this directly, by diffing every line
-outside `MANAGED` and `REFRESH` before and after.
+property survives byte for byte including its original folding. Line endings are the one exception:
+output is always CRLF, as RFC 5545 requires, whatever the source used. Do not introduce an ICS
+object model: a parse-and-reserialise would rewrite the whole document to its own conventions and
+drift from what KCL sent, for no gain. `test/ics.test.ts` asserts this directly, by diffing every
+line outside `MANAGED` and `REFRESH` before and after.
 
 The managed set is `MANAGED` and `REFRESH` in `src/ics.ts`, and adding to it is a deliberate act,
 not a convenience:

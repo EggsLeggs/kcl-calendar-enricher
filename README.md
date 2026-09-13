@@ -139,7 +139,8 @@ Tests run inside the Workers runtime via `@cloudflare/vitest-pool-workers`, agai
 
 The ICS is rewritten as text, line by line, rather than parsed into an object model and serialised
 back. Only the properties in the table above change; every other property keeps its original bytes
-and its original folding.
+and its original folding. The one thing normalised throughout is line endings, which are always
+CRLF on the way out, as RFC 5545 requires.
 
 ## Adding a building
 
