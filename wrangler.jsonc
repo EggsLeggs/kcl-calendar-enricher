@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kcl-calendar-enricher",
+  "main": "src/index.ts",
+  // Held at the newest date the vitest pool's bundled workerd supports, so tests run against the
+  // same semantics as production. Bump both together when @cloudflare/vitest-pool-workers updates.
+  "compatibility_date": "2026-08-22",
+
+  // Workers Cache replaces the in-memory map the Java service used. It reads through, so a hit
+  // never invokes the Worker, and it collapses concurrent misses for the same feed. The key
+  // includes the query string, which is where this service keeps all of its key material.
+  "cache": {
+    "enabled": true
+  },
+
+  // Nothing here should take more than a few milliseconds. The cap is denial-of-wallet
+  // protection on a public endpoint, not a performance target.
+  "limits": {
+    "cpu_ms": 1000
+  },
+
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+
+  // Cutover step 1. At step 2 this gains a route for kcl-calendar-enricher.thinkhuman.dev, and at
+  // step 4d the route becomes a custom domain and workers_dev goes to false. See the migration plan.
+  "workers_dev": true
+}

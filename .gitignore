@@ -1,29 +1,13 @@
-### IntelliJ IDEA ###
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
-.kotlin
+### Node ###
+node_modules/
+*.log
 
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
+### Wrangler ###
+# worker-configuration.d.ts is committed so typecheck works without running `wrangler types` first.
+.wrangler/
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
+### Editors ###
+.idea/
 .vscode/
 
 ### Claude Code ###
@@ -32,21 +16,7 @@ bin/
 ### Mac OS ###
 .DS_Store
 
-### Maven ###
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
-
-### Docker ###
-docker-compose.override.yml
-
-### Environment Variables ###
+### Environment variables ###
+.dev.vars
 .env
 .env.local

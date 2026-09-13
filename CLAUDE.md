@@ -1,254 +1,74 @@
-# KCL Calendar Enricher - Claude Project Specification
+# KCL Calendar Enricher
 
-## Project Overview
+A Cloudflare Worker that proxies a KCL Scientia ICS timetable and fills in each event's `LOCATION`
+from the `Location:` line inside its `DESCRIPTION`. Deployed to
+`kcl-calendar-enricher.thinkhuman.dev`. No bindings, no secrets, no database.
 
-The KCL Calendar Enricher is a Java application that enriches King's College London (KCL) ICS calendar feeds with proper location metadata. It fetches calendar feeds from KCL's Scientia system, parses event descriptions to extract location information, maps abbreviated building codes to full addresses, and serves enriched calendar feeds via HTTP.
+## The one architectural rule
 
-## Technology Stack
+**Only `LOCATION` changes.** The ICS is rewritten as text, line by line, so every other property
+survives byte for byte including its original folding. Do not introduce an ICS object model: a
+parse-and-reserialise would rewrite the whole document to its own conventions and drift from what
+KCL sent, for no gain. `test/ics.test.ts` asserts this directly, by diffing every non-`LOCATION`
+line before and after.
 
-- **Language**: Java 17+
-- **Build Tool**: Maven 3.9+
-- **Testing Framework**: JUnit 5
-- **ICS Parsing**: iCal4j 3.2.14
-- **HTTP Server**: Javalin 5.6.3
-- **HTTP Client**: Apache HttpClient 5
+## Layout
 
-## Project Structure
+| File | Responsibility |
+| --- | --- |
+| `src/index.ts` | Hono app. Two routes, the status mapping, and the cache headers. |
+| `src/upstream.ts` | The Scientia allowlist, and fetching with hand-followed redirects. |
+| `src/ics.ts` | Unfold, unescape, swap `LOCATION`, re-escape, refold. |
+| `src/parser.ts` | The five regexes that read a KCL `DESCRIPTION`. |
+| `src/locations.ts` | Building code to street address. |
 
-```
-src/
-├── main/
-│   ├── java/com/kcl/calendar/
-│   │   ├── CalendarEnricherApplication.java  # Main application and HTTP server
-│   │   ├── model/
-│   │   │   └── EventMetadata.java            # Model for parsed event metadata
-│   │   ├── parser/
-│   │   │   └── EventBodyParser.java          # Parses event descriptions
-│   │   └── service/
-│   │       ├── CalendarEnricher.java         # Main enrichment service
-│   │       ├── CalendarFetcher.java          # Fetches ICS from URLs
-│   │       └── LocationMapper.java           # Maps building codes to full names
-│   └── resources/
-│       └── location-mappings.properties      # Building code mappings
-└── test/
-    └── java/com/kcl/calendar/
-        ├── parser/
-        │   └── EventBodyParserTest.java
-        └── service/
-            ├── CalendarEnricherTest.java
-            ├── CalendarFetcherTest.java
-            └── LocationMapperTest.java
-```
+## Conventions
 
-## Key Components
+**Keep it small.** This is 400-odd lines doing one thing. Write the direct version; add an
+abstraction when a second caller exists, not before.
 
-### 1. EventBodyParser
-- **Location**: `src/main/java/com/kcl/calendar/parser/EventBodyParser.java`
-- **Purpose**: Parses structured text from event DESCRIPTION fields
-- **Input**: Event description text like:
-  ```
-  Event type: Lecture
-  Description: AGENTS AND MULTI-AGENT SYSTEMS
-  Location: KINGS BLDG KIN 625 (Anatomy Lecture Theatre)
-  Date: Tuesday, 14 October 2025
-  Staff: Sarkadi, Stefan, Black, Elizabeth
-  ```
-- **Output**: `EventMetadata` object with parsed fields
+**No `nodejs_compat`.** Everything used here is on the bare Workers runtime. If something seems to
+need a Node built-in, it is the wrong approach.
 
-### 2. LocationMapper
-- **Location**: `src/main/java/com/kcl/calendar/service/LocationMapper.java`
-- **Purpose**: Maps abbreviated building codes to full addresses
-- **Configuration**: `src/main/resources/location-mappings.properties`
-- **Examples**:
-  - `KINGS BLDG` → `King's Building - King's College London, Strand Campus, London WC2R 2LS`
-  - `WATERLOO` → `Franklin-Wilkins Building - King's College London, Waterloo Campus, London SE1 9NH`
+**British English** in prose, comments and UI copy.
 
-### 3. CalendarFetcher
-- **Location**: `src/main/java/com/kcl/calendar/service/CalendarFetcher.java`
-- **Purpose**: Fetches ICS calendar files from URLs
-- **Features**:
-  - HTTP timeout handling (30 seconds)
-  - Redirect following
-  - Error handling for network and parsing issues
+**Punctuation.** Plain ASCII throughout: hyphen `-`, straight quotes, `...` for an ellipsis. Where a
+dash would join a range or an aside, write `to`, a comma, or a full stop.
 
-### 4. CalendarEnricher
-- **Location**: `src/main/java/com/kcl/calendar/service/CalendarEnricher.java`
-- **Purpose**: Main orchestration service
-- **Process**:
-  1. Fetches original calendar
-  2. Parses each event's description
-  3. Extracts location information
-  4. Maps abbreviated locations to full names
-  5. Updates LOCATION property in events
-  6. Returns enriched calendar
+## Things that look like bugs but are not
 
-### 5. CalendarEnricherApplication
-- **Location**: `src/main/java/com/kcl/calendar/CalendarEnricherApplication.java`
-- **Purpose**: HTTP server for serving enriched calendars
-- **Endpoints**:
-  - `GET /health` - Health check
-  - `GET /enrich?url=<calendar-url>` - Enrich and return calendar
-  - `GET /subscribe/{urlParam}` - Subscribe endpoint (redirects to /enrich)
-- **Features**:
-  - 5-minute cache for enriched calendars
-  - Proper ICS content-type headers
-  - Error handling with appropriate HTTP status codes
+- `//api/ical/` with a double slash is accepted because KCL genuinely publishes subscribe links that
+  way. Rejecting it would break every existing subscription.
+- `KINGS_BDLG` is a deliberate alias for a typo that appears in real feeds.
+- The parser's regexes carry no flags on purpose. Java's default `$` means end of input and so does
+  JavaScript's without `m`; adding `m` or `s` would change which text each field captures.
+- An unmapped location still overwrites `LOCATION` with the raw text from the `DESCRIPTION`. That is
+  what the original Java did, and it is better than leaving a bare room code.
+- A `VALARM` carries its own `DESCRIPTION`. `enrichEvent` tracks nesting depth so it reads the
+  event's, not the reminder's.
 
-## Building and Testing
+## Testing
 
-### Build the project
 ```bash
-mvn clean compile
+pnpm test       # 74 tests in the Workers runtime, no network
+pnpm typecheck
 ```
 
-### Run all tests (29 tests)
-```bash
-mvn test
-```
+Everything runs against `test/fixtures/timetable.ics`, which covers a folded description, an event
+with no description, a description with no location, an unmapped building, and a nested `VALARM`.
+Regenerate nothing by hand: if you need another case, add an event to the fixture.
 
-### Run specific test class
-```bash
-mvn test -Dtest=EventBodyParserTest
-mvn test -Dtest=LocationMapperTest
-mvn test -Dtest=CalendarFetcherTest
-mvn test -Dtest=CalendarEnricherTest
-```
+Outbound `fetch` is stubbed globally by `test/fetch-stub.ts`. The worker shares the test isolate, so
+the stub covers calls made through `SELF` too.
 
-### Package the application
-```bash
-mvn clean package
-```
+## Compatibility date
 
-This creates an executable JAR: `target/kcl-calendar-enricher-1.0-SNAPSHOT.jar`
+`wrangler.jsonc` is held at the newest date the vitest pool's bundled workerd supports, so tests
+exercise the same semantics as production. Bump it and `@cloudflare/vitest-pool-workers` together.
 
-## Running the Application
+## Deployment
 
-### Run from Maven
-```bash
-mvn exec:java -Dexec.mainClass="com.kcl.calendar.CalendarEnricherApplication"
-```
+`.github/workflows/deploy.yml` deploys on push to `main`, gated on typecheck and tests.
 
-### Run the packaged JAR
-```bash
-java -jar target/kcl-calendar-enricher-1.0-SNAPSHOT.jar [port]
-```
-
-Default port is 8080. You can specify a different port as a command-line argument.
-
-### Example Usage
-
-1. Start the server:
-   ```bash
-   java -jar target/kcl-calendar-enricher-1.0-SNAPSHOT.jar 8080
-   ```
-
-2. Enrich a calendar:
-   ```bash
-   curl "http://localhost:8080/enrich?url=https://scientia-eu-v4-api-d4-02.azurewebsites.net//api/ical/REDACTED-TIMETABLE-ID/REDACTED-TIMETABLE-ID/timetable.ics"
-   ```
-
-3. Subscribe in your calendar app:
-   - Use URL: `http://localhost:8080/enrich?url=<your-kcl-calendar-url>`
-   - The calendar app will fetch the enriched calendar
-
-## Test-Driven Development Approach
-
-This project was built using TDD principles:
-
-1. **EventBodyParserTest** (8 tests): Tests for parsing event descriptions
-2. **LocationMapperTest** (10 tests): Tests for location mapping
-3. **CalendarFetcherTest** (5 tests): Tests for fetching calendars from URLs
-4. **CalendarEnricherTest** (6 tests): Integration tests for the enrichment service
-
-All tests are written before implementation, ensuring:
-- Clear requirements
-- Edge case handling
-- Regression prevention
-- Documentation through examples
-
-## ICS 2.0 Compliance
-
-The application:
-- Accepts ICS 2.0 feeds (KCL already uses 2.0)
-- Maintains ICS 2.0 format in output
-- Preserves all original calendar properties
-- Only modifies LOCATION properties based on parsed descriptions
-
-## Adding New Building Mappings
-
-To add new building codes:
-
-1. Edit `src/main/resources/location-mappings.properties`
-2. Add entries in format: `CODE=Full Building Name, Campus, Postal Code`
-3. Example:
-   ```properties
-   NEW_BLDG=New Building - King's College London, Campus Name, Postcode
-   NBL=New Building - King's College London, Campus Name, Postcode
-   ```
-4. Rebuild and restart the application
-
-## Cache Configuration
-
-The application caches enriched calendars for 5 minutes (300 seconds). To modify:
-
-Edit `CalendarEnricherApplication.java:19`:
-```java
-private final long cacheTTLMillis = 5 * 60 * 1000; // Change this value
-```
-
-## Error Handling
-
-The application handles:
-- Invalid URLs (400 Bad Request)
-- Network errors (502 Bad Gateway)
-- Parse errors (502 Bad Gateway)
-- Invalid calendar format (502 Bad Gateway)
-- Internal errors (500 Internal Server Error)
-
-## Future Enhancements
-
-Potential improvements:
-- Persistent cache (Redis/database)
-- Automatic sync service with webhooks
-- Support for multiple calendar sources
-- Admin UI for managing building mappings
-- Metrics and monitoring
-- Docker containerization
-- API authentication
-
-## Dependencies
-
-Key dependencies in `pom.xml`:
-- `ical4j` 3.2.14 - ICS parsing and generation
-- `javalin` 5.6.3 - HTTP server
-- `httpclient5` 5.3 - HTTP client for fetching calendars
-- `junit-jupiter` 5.10.1 - Testing framework
-- `mockito` 5.8.0 - Mocking for tests
-
-## IntelliJ IDEA Integration
-
-This project is configured as an IntelliJ IDEA project:
-- `.iml` file for module configuration
-- Maven is the primary build tool
-- Java 17+ required
-- Tests can be run directly from the IDE
-
-## Troubleshooting
-
-### Tests failing with network errors
-- Tests `CalendarFetcherTest` and `CalendarEnricherTest` make real HTTP requests to KCL servers
-- Ensure you have internet connectivity
-- KCL servers must be accessible
-
-### Location mappings not working
-- Check `location-mappings.properties` is in `src/main/resources/`
-- Verify file is included in the JAR (check `target/classes/`)
-- Ensure property keys match the abbreviations in calendar descriptions
-
-### Port already in use
-- Change the port: `java -jar target/kcl-calendar-enricher-1.0-SNAPSHOT.jar 8081`
-- Or stop the process using port 8080
-
-## License and Usage
-
-This is a personal project for enriching KCL calendar feeds. Not affiliated with King's College London.
+The hostname was previously served by a container on Portainer behind a cloudflared tunnel. That is
+gone; do not reintroduce a Dockerfile or a Compose file.
