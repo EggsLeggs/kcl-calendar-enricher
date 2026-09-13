@@ -115,7 +115,14 @@ export async function fetchIcs(raw: string): Promise<string> {
       throw new UpstreamError(`Failed to fetch calendar: HTTP ${response.status}`)
     }
 
-    return await response.text()
+    // Reading the body is a second chance to fail: the connection can drop part way through one
+    // of these, and a 200 with a truncated body is still an upstream fault rather than ours.
+    try {
+      return await response.text()
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      throw new UpstreamError(`Failed to read calendar body: ${reason}`)
+    }
   }
 
   throw new UpstreamError(`Too many redirects (more than ${MAX_REDIRECTS})`)

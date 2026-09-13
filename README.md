@@ -118,7 +118,7 @@ whatever hostname it is served from, so there is nothing to edit before it works
 
 ```bash
 pnpm install
-pnpm test        # 92 tests in the Workers runtime, no network access needed
+pnpm test        # 93 tests in the Workers runtime, no network access needed
 pnpm typecheck
 pnpm dev         # http://localhost:8787
 ```
