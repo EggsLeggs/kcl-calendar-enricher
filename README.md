@@ -1,8 +1,9 @@
 # kcl-calendar-enricher
 
 KCL's timetable feed leaves `LOCATION` as a bare room code, so calendar apps show "KIN 625" and
-cannot map it. This Cloudflare Worker sits in front of the feed, reads the `Location:` line out of
-each event's description, expands the building code to a full street address, and writes it back.
+cannot map it. Everything else useful about the event is buried in a block of prose in the
+description, where no calendar app will look. This Cloudflare Worker sits in front of the feed and
+lifts that prose into the properties the iCalendar spec already has for it.
 
 Everything else in the feed is passed through byte for byte. There is no database, no build step
 and nothing to remember.
@@ -12,18 +13,39 @@ and nothing to remember.
 ```
 LOCATION:KIN 625
 DESCRIPTION:Event type: Lecture\nDescription: AGENTS AND MULTI-AGENT SYSTEMS\n
- Location: KINGS BLDG KIN 625 (Anatomy Lecture Theatre)\n...
+ Location: KINGS BLDG KIN 625 (Anatomy Lecture Theatre)\n
+ Staff: Sarkadi\, Stefan\, Black\, Elizabeth\n...
 ```
 
 **After**
 
 ```
 LOCATION:33-41 Surrey St\, London\, WC2R 2ND\, England
+GEO:51.5115;-0.116
+CATEGORIES:Lecture
+CONTACT:Sarkadi\, Stefan\, Black\, Elizabeth
 DESCRIPTION:Event type: Lecture\nDescription: AGENTS AND MULTI-AGENT SYSTEMS\n
- Location: KINGS BLDG KIN 625 (Anatomy Lecture Theatre)\n...
+ Location: KINGS BLDG KIN 625 (Anatomy Lecture Theatre)\n
+ Staff: Sarkadi\, Stefan\, Black\, Elizabeth\n...
 ```
 
 The room detail stays in the description, so nothing is lost.
+
+## What it fills in
+
+| Property | Where it comes from | What you get |
+| --- | --- | --- |
+| `LOCATION` | the `Location:` line, building code expanded | an address your calendar app can search |
+| `GEO` | the building the code names | a map pin, and travel time, with no geocoding |
+| `CATEGORIES` | the `Event type:` line | lectures, practicals and seminars you can filter or colour |
+| `CONTACT` | the `Staff:` line | who is teaching, without reading the description |
+| `REFRESH-INTERVAL` | the five minute cache in front of the feed | a room change that shows up today, not tomorrow |
+
+`LOCATION` is the one that gets overwritten, because a bare room code is the bug this exists to fix.
+The rest are only added when KCL has not sent them itself.
+
+Coordinates are building entrances and are approximate: close enough for a pin sitting beside the
+full address, not a survey.
 
 ## What is live
 
@@ -96,7 +118,7 @@ whatever hostname it is served from, so there is nothing to edit before it works
 
 ```bash
 pnpm install
-pnpm test        # 80 tests in the Workers runtime, no network access needed
+pnpm test        # 92 tests in the Workers runtime, no network access needed
 pnpm typecheck
 pnpm dev         # http://localhost:8787
 ```
@@ -111,18 +133,18 @@ Tests run inside the Workers runtime via `@cloudflare/vitest-pool-workers`, agai
 | `src/index.ts` | Hono app. Three routes, the status mapping, the cache headers. |
 | `src/page.ts` | The link builder served at `/`. |
 | `src/upstream.ts` | The Scientia allowlist, and fetching with hand-followed redirects. |
-| `src/ics.ts` | Unfold, unescape, swap `LOCATION`, re-escape, refold. |
+| `src/ics.ts` | Unfold, unescape, write the managed properties, re-escape, refold. |
 | `src/parser.ts` | The five regexes that read a KCL `DESCRIPTION`. |
-| `src/locations.ts` | Building code to street address. |
+| `src/locations.ts` | Building code to street address and coordinate. |
 
 The ICS is rewritten as text, line by line, rather than parsed into an object model and serialised
-back. Only `LOCATION` changes; every other property keeps its original bytes and its original
-folding.
+back. Only the properties in the table above change; every other property keeps its original bytes
+and its original folding.
 
 ## Adding a building
 
-Add the code and its address to `MAPPINGS` in `src/locations.ts`, then add a case to
-`test/locations.test.ts`. Codes match on whole words, and an underscore in a code matches an
+Add a `Place` with its address and coordinate to `src/locations.ts`, list the code against it in
+`MAPPINGS`, then add a case to `test/locations.test.ts`. Codes match on whole words, and an underscore in a code matches an
 underscore, a space, or nothing, so `KINGS_BLDG` covers "KINGS BLDG", "KINGS_BLDG" and "KINGSBLDG".
 The first entry that matches wins, so put more specific codes above shorter ones.
 
